@@ -1,0 +1,16 @@
+ARDY Core showcase assets and released model
+
+This application includes the CoreSkeleton27 neutral-joint and skin assets from:
+
+    NVIDIA ARDY
+    https://github.com/nv-tlabs/ardy
+    source revision 693f74d
+
+The upstream source and bundled Core skeleton/skin assets are distributed under Apache-2.0. A copy
+of that license is retained at public/assets/ardy/LICENSE. The browser-native core-skin bundle is a
+deterministic format conversion of joints.p and skin_standard.npz; their SHA-256 identities are
+recorded in core-skin.json.
+
+The separately downloaded ARDY-Core-RP-20FPS-Horizon8 checkpoint is pinned by immutable Hugging Face
+revision and is licensed under the NVIDIA Open Model License identified on its model page. The model
+weights are range-streamed at runtime and are not copied into this source tree.
