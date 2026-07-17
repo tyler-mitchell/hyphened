@@ -1,0 +1,46 @@
+{
+  "name": "ardy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check",
+    "preview": "vp preview",
+    "prepare:assets": "tsx scripts/prepare-core-assets.ts",
+    "start": "node .output/server/index.mjs",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@hyphened/ui": "workspace:*",
+    "@legendapp/state": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@tanstack/react-start": "^1.167.42",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "typegpu": "catalog:",
+    "webgpu-engine": "workspace:*",
+    "wgpu-matrix": "catalog:",
+    "yaml": "^2.8.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@webgpu/types": "catalog:",
+    "citty": "catalog:",
+    "fflate": "catalog:",
+    "nitro": "catalog:",
+    "playwright": "catalog:",
+    "tsx": "catalog:",
+    "typegpu-devtools": "workspace:*",
+    "typescript": "catalog:",
+    "unplugin-typegpu": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  }
+}
