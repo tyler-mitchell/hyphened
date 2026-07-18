@@ -11,6 +11,6 @@ of that license is retained at public/assets/ardy/LICENSE. The browser-native co
 deterministic format conversion of joints.p and skin_standard.npz; their SHA-256 identities are
 recorded in core-skin.json.
 
-The separately downloaded ARDY-Core-RP-20FPS-Horizon8 checkpoint is pinned by immutable Hugging Face
+The separately downloaded ARDY-Core-RP-20FPS-Horizon40 checkpoint is pinned by immutable Hugging Face
 revision and is licensed under the NVIDIA Open Model License identified on its model page. The model
 weights are range-streamed at runtime and are not copied into this source tree.
