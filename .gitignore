@@ -1,4 +1,6 @@
 node_modules
+.runtime
+models
 .DS_Store
 .nitro
 .output
