@@ -1,0 +1,93 @@
+{
+  "kind": "humanoid-skin@1",
+  "source": {
+    "repository": "https://github.com/nv-tlabs/ardy",
+    "revision": "693f74d13b3d04a0a22ce127ee79c929dd89756b",
+    "jointsSha256": "5e1d60cb1935c2ea50c6978848697d83efde5621cbbc287891ddae3ba55dde61",
+    "skinSha256": "4ed2b1ea33a997d7777a59d74ec2312b52af2276331048c954441f5f44f6e58b"
+  },
+  "binary": {
+    "byteLength": 801264,
+    "sha256": "ccc03de0eefa15018e0e763e89917456b6616f972a706a6897d1ed910e0fc009"
+  },
+  "vertexCount": 9084,
+  "triangleCount": 18152,
+  "jointCount": 27,
+  "influencesPerVertex": 5,
+  "jointNames": [
+    "Hips",
+    "Spine",
+    "Spine1",
+    "Spine2",
+    "Spine3",
+    "Neck",
+    "Head",
+    "RightShoulder",
+    "RightArm",
+    "RightForeArm",
+    "RightHand",
+    "RightHandEnd",
+    "RightHandThumb1",
+    "LeftShoulder",
+    "LeftArm",
+    "LeftForeArm",
+    "LeftHand",
+    "LeftHandEnd",
+    "LeftHandThumb1",
+    "RightUpLeg",
+    "RightLeg",
+    "RightFoot",
+    "RightToeBase",
+    "LeftUpLeg",
+    "LeftLeg",
+    "LeftFoot",
+    "LeftToeBase"
+  ],
+  "parents": [
+    -1, 0, 1, 2, 3, 4, 5, 4, 7, 8, 9, 10, 10, 4, 13, 14, 15, 16, 16, 0, 19, 20, 21, 0, 23, 24, 25
+  ],
+  "sections": {
+    "positions": {
+      "byteLength": 109008,
+      "byteOffset": 0,
+      "componentType": "f32",
+      "shape": [9084, 3]
+    },
+    "normals": {
+      "byteLength": 109008,
+      "byteOffset": 109008,
+      "componentType": "f32",
+      "shape": [9084, 3]
+    },
+    "indices": {
+      "byteLength": 217824,
+      "byteOffset": 218016,
+      "componentType": "u32",
+      "shape": [18152, 3]
+    },
+    "jointIndices": {
+      "byteLength": 181680,
+      "byteOffset": 435840,
+      "componentType": "u32",
+      "shape": [9084, 5]
+    },
+    "jointWeights": {
+      "byteLength": 181680,
+      "byteOffset": 617520,
+      "componentType": "f32",
+      "shape": [9084, 5]
+    },
+    "inverseBindMatrices": {
+      "byteLength": 1728,
+      "byteOffset": 799200,
+      "componentType": "f32",
+      "shape": [27, 4, 4]
+    },
+    "neutralJoints": {
+      "byteLength": 324,
+      "byteOffset": 800928,
+      "componentType": "f32",
+      "shape": [27, 3]
+    }
+  }
+}
