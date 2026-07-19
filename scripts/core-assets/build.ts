@@ -118,10 +118,7 @@ const neutralJoints = (archiveBytes: Uint8Array): Float32Array => {
   const archive = unzipSync(archiveBytes);
   const data = archive["joints/data/0"];
   const pickle = archive["joints/data.pkl"];
-  if (
-    data?.byteLength !== coreAssetLayout.jointCount * 3 * 8 ||
-    pickle?.byteLength !== 155
-  ) {
+  if (data?.byteLength !== coreAssetLayout.jointCount * 3 * 8 || pickle?.byteLength !== 155) {
     throw new Error("Core neutral-joint tensor does not match the admitted 27x3 F64 archive");
   }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -154,29 +151,33 @@ const computeNormals = (input: {
   readonly indices: Uint32Array;
   readonly positions: Float32Array;
 }): Float32Array => {
+  // Sorting this newly allocated build-only array is the bounded imperative boundary needed for
+  // binary-search aggregation; no source or derived contribution escapes mutation.
   const contributions = Array.from(
-    { length: input.indices.length / 3 },
-    (_unused, face): ReadonlyArray<VertexNormalContribution> => {
-      const indexOffset = face * 3;
-      const a = input.indices[indexOffset]! * 3;
-      const b = input.indices[indexOffset + 1]! * 3;
-      const c = input.indices[indexOffset + 2]! * 3;
-      const abx = input.positions[b]! - input.positions[a]!;
-      const aby = input.positions[b + 1]! - input.positions[a + 1]!;
-      const abz = input.positions[b + 2]! - input.positions[a + 2]!;
-      const acx = input.positions[c]! - input.positions[a]!;
-      const acy = input.positions[c + 1]! - input.positions[a + 1]!;
-      const acz = input.positions[c + 2]! - input.positions[a + 2]!;
-      const normal = [
-        aby * acz - abz * acy,
-        abz * acx - abx * acz,
-        abx * acy - aby * acx,
-      ] as const;
-      return [a / 3, b / 3, c / 3].map((vertex) => ({ normal, vertex }));
-    },
-  )
-    .flat()
-    .toSorted((left, right) => left.vertex - right.vertex);
+    Array.from(
+      { length: input.indices.length / 3 },
+      (_unused, face): ReadonlyArray<VertexNormalContribution> => {
+        const indexOffset = face * 3;
+        const a = input.indices[indexOffset]! * 3;
+        const b = input.indices[indexOffset + 1]! * 3;
+        const c = input.indices[indexOffset + 2]! * 3;
+        const abx = input.positions[b]! - input.positions[a]!;
+        const aby = input.positions[b + 1]! - input.positions[a + 1]!;
+        const abz = input.positions[b + 2]! - input.positions[a + 2]!;
+        const acx = input.positions[c]! - input.positions[a]!;
+        const acy = input.positions[c + 1]! - input.positions[a + 1]!;
+        const acz = input.positions[c + 2]! - input.positions[a + 2]!;
+        const normal = [
+          aby * acz - abz * acy,
+          abz * acx - abx * acz,
+          abx * acy - aby * acx,
+        ] as const;
+        return [a / 3, b / 3, c / 3].map((vertex) => ({ normal, vertex }));
+      },
+    ).flat(),
+  ).sort(
+    (left: VertexNormalContribution, right: VertexNormalContribution) => left.vertex - right.vertex,
+  );
   const vertexNormals = Array.from(
     { length: input.positions.length / 3 },
     (_unused, vertex): readonly [number, number, number] => {
@@ -193,9 +194,7 @@ const computeNormals = (input: {
           [0, 0, 0],
         );
       const length = Math.hypot(...normal);
-      return length > 0
-        ? [normal[0] / length, normal[1] / length, normal[2] / length]
-        : [0, 1, 0];
+      return length > 0 ? [normal[0] / length, normal[1] / length, normal[2] / length] : [0, 1, 0];
     },
   );
   return Float32Array.from(
@@ -285,24 +284,27 @@ const packPayloads = (
       readonly payload: BinaryPayload;
       readonly section: BinarySection;
     }>;
-  }>((state, payload) => {
-    const byteOffset = aligned(state.cursor);
-    return {
-      cursor: byteOffset + payload.bytes.byteLength,
-      entries: [
-        ...state.entries,
-        {
-          payload,
-          section: {
-            byteLength: payload.bytes.byteLength,
-            byteOffset,
-            componentType: payload.componentType,
-            shape: payload.shape,
+  }>(
+    (state, payload) => {
+      const byteOffset = aligned(state.cursor);
+      return {
+        cursor: byteOffset + payload.bytes.byteLength,
+        entries: [
+          ...state.entries,
+          {
+            payload,
+            section: {
+              byteLength: payload.bytes.byteLength,
+              byteOffset,
+              componentType: payload.componentType,
+              shape: payload.shape,
+            },
           },
-        },
-      ],
-    };
-  }, { cursor: 0, entries: [] });
+        ],
+      };
+    },
+    { cursor: 0, entries: [] },
+  );
   const binary = Uint8Array.from({ length: aligned(packed.cursor) }, (_unused, byteOffset) => {
     const entry = packed.entries.find(
       ({ section }) =>
@@ -455,9 +457,7 @@ const writeCoreAssetBundle = async (input: {
 };
 
 /** Read pinned upstream artifacts, derive one admitted bundle, then write both admitted outputs. */
-export const buildCoreAssetBundle = async (
-  input: CoreAssetBundleBuildConfig,
-): Promise<void> => {
+export const buildCoreAssetBundle = async (input: CoreAssetBundleBuildConfig): Promise<void> => {
   const [skinBytes, jointBytes] = await Promise.all([
     readFile(join(input.sourceDirectory, "skin_standard.npz")),
     readFile(join(input.sourceDirectory, "joints.p")),
