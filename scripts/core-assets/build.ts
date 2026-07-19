@@ -13,6 +13,47 @@ interface BinarySection {
   readonly shape: ReadonlyArray<number>;
 }
 
+type ComponentType = BinarySection["componentType"];
+
+interface BinaryPayload {
+  readonly bytes: Uint8Array;
+  readonly componentType: ComponentType;
+  readonly name: string;
+  readonly shape: ReadonlyArray<number>;
+}
+
+export interface CoreAssetBundleBuildConfig {
+  readonly outputDirectory: string;
+  readonly sourceDirectory: string;
+}
+
+interface DerivedCoreAssetBundle {
+  readonly binary: Uint8Array;
+  readonly manifestJson: string;
+}
+
+const coreAssetLayout = {
+  vertexCount: 9084,
+  triangleCount: 18152,
+  jointCount: 27,
+  influencesPerVertex: 5,
+  connectionCount: 26,
+  sections: {
+    positions: [9084, 3],
+    normals: [9084, 3],
+    indices: [18152, 3],
+    jointIndices: [9084, 5],
+    jointWeights: [9084, 5],
+    inverseBindMatrices: [27, 4, 4],
+    neutralJoints: [27, 3],
+  },
+} as const;
+
+const coreAssetSource = {
+  repository: "https://github.com/nv-tlabs/ardy",
+  revision: "693f74d13b3d04a0a22ce127ee79c929dd89756b",
+} as const;
+
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const aligned = (value: number): number => Math.ceil(value / 16) * 16;
 
@@ -22,41 +63,52 @@ const arrayAt = (archive: Record<string, Uint8Array>, name: string): CoreAssetNu
   return parseCoreAssetNumpyArray(bytes);
 };
 
-const exactShape = <T extends CoreAssetNumpyArray>(
-  array: T,
-  shape: ReadonlyArray<number>,
-  label: string,
-): T => {
+const exactShape = <T extends CoreAssetNumpyArray>(input: {
+  readonly array: T;
+  readonly label: string;
+  readonly shape: ReadonlyArray<number>;
+}): T => {
   if (
-    array.shape.length !== shape.length ||
-    array.shape.some((value, axis) => value !== shape[axis])
+    input.array.shape.length !== input.shape.length ||
+    input.array.shape.some((value, axis) => value !== input.shape[axis])
   ) {
     throw new Error(
-      `${label} shape [${array.shape.join(",")}] does not match [${shape.join(",")}]`,
+      `${input.label} shape [${input.array.shape.join(",")}] does not match [${input.shape.join(",")}]`,
     );
   }
-  return array;
+  return input.array;
 };
 
-const asF32 = (array: CoreAssetNumpyArray, label: string): Float32Array => {
-  if (!(array.values instanceof Float32Array) && !(array.values instanceof Float64Array)) {
-    throw new Error(`${label} must be floating point`);
+const asF32 = (input: {
+  readonly array: CoreAssetNumpyArray;
+  readonly label: string;
+}): Float32Array => {
+  if (
+    !(input.array.values instanceof Float32Array) &&
+    !(input.array.values instanceof Float64Array)
+  ) {
+    throw new Error(`${input.label} must be floating point`);
   }
-  const result = Float32Array.from(array.values);
-  if (result.some((value) => !Number.isFinite(value))) throw new Error(`${label} must be finite`);
+  const result = Float32Array.from(input.array.values);
+  if (result.some((value) => !Number.isFinite(value))) {
+    throw new Error(`${input.label} must be finite`);
+  }
   return result;
 };
 
-const asU32 = (array: CoreAssetNumpyArray, label: string): Uint32Array => {
-  const values = array.values;
+const asU32 = (input: {
+  readonly array: CoreAssetNumpyArray;
+  readonly label: string;
+}): Uint32Array => {
+  const values = input.array.values;
   if (!(values instanceof Int32Array) && !(values instanceof BigInt64Array)) {
-    throw new Error(`${label} must be signed integer data`);
+    throw new Error(`${input.label} must be signed integer data`);
   }
   return Uint32Array.from({ length: values.length }, (_unused, index) => {
     const value = values[index]!;
     const number = typeof value === "bigint" ? Number(value) : value;
     if (!Number.isSafeInteger(number) || number < 0 || number > 0xffff_ffff) {
-      throw new Error(`${label} contains an out-of-range index`);
+      throw new Error(`${input.label} contains an out-of-range index`);
     }
     return number;
   });
@@ -66,175 +118,352 @@ const neutralJoints = (archiveBytes: Uint8Array): Float32Array => {
   const archive = unzipSync(archiveBytes);
   const data = archive["joints/data/0"];
   const pickle = archive["joints/data.pkl"];
-  if (data?.byteLength !== 27 * 3 * 8 || pickle?.byteLength !== 155) {
+  if (
+    data?.byteLength !== coreAssetLayout.jointCount * 3 * 8 ||
+    pickle?.byteLength !== 155
+  ) {
     throw new Error("Core neutral-joint tensor does not match the admitted 27x3 F64 archive");
   }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  return Float32Array.from({ length: 27 * 3 }, (_unused, index) =>
+  return Float32Array.from({ length: coreAssetLayout.jointCount * 3 }, (_unused, index) =>
     view.getFloat64(index * 8, true),
   );
 };
 
-const computeNormals = (positions: Float32Array, indices: Uint32Array): Float32Array => {
-  const normals = new Float64Array(positions.length);
-  for (let face = 0; face < indices.length; face += 3) {
-    const a = indices[face]! * 3;
-    const b = indices[face + 1]! * 3;
-    const c = indices[face + 2]! * 3;
-    const abx = positions[b]! - positions[a]!;
-    const aby = positions[b + 1]! - positions[a + 1]!;
-    const abz = positions[b + 2]! - positions[a + 2]!;
-    const acx = positions[c]! - positions[a]!;
-    const acy = positions[c + 1]! - positions[a + 1]!;
-    const acz = positions[c + 2]! - positions[a + 2]!;
-    const nx = aby * acz - abz * acy;
-    const ny = abz * acx - abx * acz;
-    const nz = abx * acy - aby * acx;
-    for (const vertex of [a, b, c]) {
-      normals[vertex] += nx;
-      normals[vertex + 1] += ny;
-      normals[vertex + 2] += nz;
-    }
-  }
-  return Float32Array.from({ length: positions.length }, (_unused, index) => {
-    const vertex = index - (index % 3);
-    const length = Math.hypot(normals[vertex]!, normals[vertex + 1]!, normals[vertex + 2]!);
-    return length > 0 ? normals[index]! / length : index % 3 === 1 ? 1 : 0;
-  });
+interface VertexNormalContribution {
+  readonly normal: readonly [number, number, number];
+  readonly vertex: number;
+}
+
+const lowerBound = (input: {
+  readonly entries: ReadonlyArray<VertexNormalContribution>;
+  readonly high?: number;
+  readonly low?: number;
+  readonly vertex: number;
+}): number => {
+  const low = input.low ?? 0;
+  const high = input.high ?? input.entries.length;
+  if (low >= high) return low;
+  const middle = low + Math.floor((high - low) / 2);
+  return input.entries[middle]!.vertex < input.vertex
+    ? lowerBound({ ...input, low: middle + 1, high })
+    : lowerBound({ ...input, low, high: middle });
+};
+
+const computeNormals = (input: {
+  readonly indices: Uint32Array;
+  readonly positions: Float32Array;
+}): Float32Array => {
+  const contributions = Array.from(
+    { length: input.indices.length / 3 },
+    (_unused, face): ReadonlyArray<VertexNormalContribution> => {
+      const indexOffset = face * 3;
+      const a = input.indices[indexOffset]! * 3;
+      const b = input.indices[indexOffset + 1]! * 3;
+      const c = input.indices[indexOffset + 2]! * 3;
+      const abx = input.positions[b]! - input.positions[a]!;
+      const aby = input.positions[b + 1]! - input.positions[a + 1]!;
+      const abz = input.positions[b + 2]! - input.positions[a + 2]!;
+      const acx = input.positions[c]! - input.positions[a]!;
+      const acy = input.positions[c + 1]! - input.positions[a + 1]!;
+      const acz = input.positions[c + 2]! - input.positions[a + 2]!;
+      const normal = [
+        aby * acz - abz * acy,
+        abz * acx - abx * acz,
+        abx * acy - aby * acx,
+      ] as const;
+      return [a / 3, b / 3, c / 3].map((vertex) => ({ normal, vertex }));
+    },
+  )
+    .flat()
+    .toSorted((left, right) => left.vertex - right.vertex);
+  const vertexNormals = Array.from(
+    { length: input.positions.length / 3 },
+    (_unused, vertex): readonly [number, number, number] => {
+      const start = lowerBound({ entries: contributions, vertex });
+      const end = lowerBound({ entries: contributions, vertex: vertex + 1 });
+      const normal = contributions
+        .slice(start, end)
+        .reduce<readonly [number, number, number]>(
+          (sum, contribution) => [
+            sum[0] + contribution.normal[0],
+            sum[1] + contribution.normal[1],
+            sum[2] + contribution.normal[2],
+          ],
+          [0, 0, 0],
+        );
+      const length = Math.hypot(...normal);
+      return length > 0
+        ? [normal[0] / length, normal[1] / length, normal[2] / length]
+        : [0, 1, 0];
+    },
+  );
+  return Float32Array.from(
+    { length: input.positions.length },
+    (_unused, index) => vertexNormals[Math.floor(index / 3)]![index % 3]!,
+  );
 };
 
 const inverseBindMatrices = (rowMajorBindMatrices: Float32Array): Float32Array => {
-  const result = new Float32Array(rowMajorBindMatrices.length);
-  for (let joint = 0; joint < 27; joint += 1) {
+  const matrices = Array.from({ length: coreAssetLayout.jointCount }, (_unused, joint) => {
     const source = rowMajorBindMatrices.subarray(joint * 16, joint * 16 + 16);
-    const columnMajor = Float32Array.from({ length: 16 }, (_unused, index) => {
-      const row = index % 4;
-      const column = Math.floor(index / 4);
-      return source[row * 4 + column]!;
-    });
-    result.set(mat4.inverse(columnMajor), joint * 16);
+    return mat4.inverse(
+      Float32Array.from({ length: 16 }, (_unusedElement, index) => {
+        const row = index % 4;
+        const column = Math.floor(index / 4);
+        return source[row * 4 + column]!;
+      }),
+    );
+  });
+  return Float32Array.from(
+    { length: rowMajorBindMatrices.length },
+    (_unused, index) => matrices[Math.floor(index / 16)]![index % 16]!,
+  );
+};
+
+const encodeScalar = (input: {
+  readonly componentType: ComponentType;
+  readonly value: number;
+}): ReadonlyArray<number> => {
+  // DataView is the exact little-endian serialization boundary; the mutable four-byte buffer does
+  // not escape, while every derivation around it remains a value transformation.
+  const bytes = new Uint8Array(4);
+  const view = new DataView(bytes.buffer);
+  if (input.componentType === "f32") view.setFloat32(0, input.value, true);
+  else view.setUint32(0, input.value, true);
+  return Array.from(bytes);
+};
+
+const encodeF32 = (values: Float32Array): Uint8Array =>
+  Uint8Array.from(
+    Array.from(values).flatMap((value) => encodeScalar({ componentType: "f32", value })),
+  );
+
+const encodeU32 = (values: Uint32Array): Uint8Array =>
+  Uint8Array.from(
+    Array.from(values).flatMap((value) => encodeScalar({ componentType: "u32", value })),
+  );
+
+const deriveParents = (connections: Uint32Array): ReadonlyArray<number> => {
+  const edges = Array.from({ length: coreAssetLayout.connectionCount }, (_unused, connection) => ({
+    parent: connections[connection * 2]!,
+    child: connections[connection * 2 + 1]!,
+  }));
+  if (
+    edges.some(
+      ({ child, parent }) =>
+        child === 0 ||
+        child >= coreAssetLayout.jointCount ||
+        parent >= coreAssetLayout.jointCount ||
+        parent >= child,
+    )
+  ) {
+    throw new Error("Core rig connections do not form the expected parent-before-child tree");
   }
-  return result;
+  return [
+    -1,
+    ...Array.from({ length: coreAssetLayout.jointCount - 1 }, (_unused, index) => {
+      const child = index + 1;
+      const parents = edges.filter((edge) => edge.child === child).map((edge) => edge.parent);
+      if (parents.length !== 1) {
+        throw new Error(`Core rig joint ${child} must have exactly one admitted parent`);
+      }
+      return parents[0]!;
+    }),
+  ];
 };
 
-const encodeF32 = (values: Float32Array): Uint8Array => {
-  const bytes = new Uint8Array(values.length * 4);
-  const view = new DataView(bytes.buffer);
-  values.forEach((value, index) => view.setFloat32(index * 4, value, true));
-  return bytes;
+const packPayloads = (
+  payloads: ReadonlyArray<BinaryPayload>,
+): {
+  readonly binary: Uint8Array;
+  readonly sections: Readonly<Record<string, BinarySection>>;
+} => {
+  const packed = payloads.reduce<{
+    readonly cursor: number;
+    readonly entries: ReadonlyArray<{
+      readonly payload: BinaryPayload;
+      readonly section: BinarySection;
+    }>;
+  }>((state, payload) => {
+    const byteOffset = aligned(state.cursor);
+    return {
+      cursor: byteOffset + payload.bytes.byteLength,
+      entries: [
+        ...state.entries,
+        {
+          payload,
+          section: {
+            byteLength: payload.bytes.byteLength,
+            byteOffset,
+            componentType: payload.componentType,
+            shape: payload.shape,
+          },
+        },
+      ],
+    };
+  }, { cursor: 0, entries: [] });
+  const binary = Uint8Array.from({ length: aligned(packed.cursor) }, (_unused, byteOffset) => {
+    const entry = packed.entries.find(
+      ({ section }) =>
+        byteOffset >= section.byteOffset && byteOffset < section.byteOffset + section.byteLength,
+    );
+    return entry === undefined ? 0 : entry.payload.bytes[byteOffset - entry.section.byteOffset]!;
+  });
+  return {
+    binary,
+    sections: Object.fromEntries(
+      packed.entries.map(({ payload, section }) => [payload.name, section]),
+    ),
+  };
 };
 
-const encodeU32 = (values: Uint32Array): Uint8Array => {
-  const bytes = new Uint8Array(values.length * 4);
-  const view = new DataView(bytes.buffer);
-  values.forEach((value, index) => view.setUint32(index * 4, value, true));
-  return bytes;
-};
-
-export const buildCoreAssetBundle = async (input: {
-  readonly outputDirectory: string;
-  readonly sourceDirectory: string;
-}): Promise<void> => {
-  const skinPath = join(input.sourceDirectory, "skin_standard.npz");
-  const jointsPath = join(input.sourceDirectory, "joints.p");
-  const [skinBytes, jointBytes] = await Promise.all([readFile(skinPath), readFile(jointsPath)]);
-  const archive = unzipSync(skinBytes);
-  const positions = asF32(
-    exactShape(arrayAt(archive, "bind_vertices"), [9084, 3], "bind vertices"),
-    "bind vertices",
-  );
-  const indices = asU32(exactShape(arrayAt(archive, "faces"), [18152, 3], "faces"), "faces");
-  const bindMatrices = asF32(
-    exactShape(arrayAt(archive, "bind_rig_transform"), [27, 4, 4], "bind transforms"),
-    "bind transforms",
-  );
-  const namesArray = exactShape(arrayAt(archive, "rig_joint_names"), [27], "joint names");
+const deriveCoreAssetBundle = (input: {
+  readonly jointBytes: Uint8Array;
+  readonly skinBytes: Uint8Array;
+}): DerivedCoreAssetBundle => {
+  const archive = unzipSync(input.skinBytes);
+  const positions = asF32({
+    array: exactShape({
+      array: arrayAt(archive, "bind_vertices"),
+      label: "bind vertices",
+      shape: coreAssetLayout.sections.positions,
+    }),
+    label: "bind vertices",
+  });
+  const indices = asU32({
+    array: exactShape({
+      array: arrayAt(archive, "faces"),
+      label: "faces",
+      shape: coreAssetLayout.sections.indices,
+    }),
+    label: "faces",
+  });
+  const bindMatrices = asF32({
+    array: exactShape({
+      array: arrayAt(archive, "bind_rig_transform"),
+      label: "bind transforms",
+      shape: coreAssetLayout.sections.inverseBindMatrices,
+    }),
+    label: "bind transforms",
+  });
+  const namesArray = exactShape({
+    array: arrayAt(archive, "rig_joint_names"),
+    label: "joint names",
+    shape: [coreAssetLayout.jointCount],
+  });
   if (!Array.isArray(namesArray.values)) throw new Error("Core rig joint names must be Unicode");
-  const jointIndices = asU32(
-    exactShape(arrayAt(archive, "lbs_indices"), [9084, 5], "skin joint indices"),
-    "skin joint indices",
-  );
-  const jointWeights = asF32(
-    exactShape(arrayAt(archive, "lbs_weights"), [9084, 5], "skin joint weights"),
-    "skin joint weights",
-  );
-  const connections = asU32(
-    exactShape(arrayAt(archive, "rig_joint_connections"), [26, 2], "rig connections"),
-    "rig connections",
-  );
-  const parents = Array.from({ length: 27 }, () => -1);
-  for (let connection = 0; connection < 26; connection += 1) {
-    const parent = connections[connection * 2]!;
-    const child = connections[connection * 2 + 1]!;
-    if (child === 0 || child >= 27 || parent >= 27 || parents[child] !== -1) {
-      throw new Error("Core rig connections do not form the expected rooted tree");
-    }
-    parents[child] = parent;
-  }
-  if (parents.slice(1).some((parent) => parent < 0)) {
-    throw new Error("Core rig connections leave an unparented non-root joint");
-  }
+  const jointIndices = asU32({
+    array: exactShape({
+      array: arrayAt(archive, "lbs_indices"),
+      label: "skin joint indices",
+      shape: coreAssetLayout.sections.jointIndices,
+    }),
+    label: "skin joint indices",
+  });
+  const jointWeights = asF32({
+    array: exactShape({
+      array: arrayAt(archive, "lbs_weights"),
+      label: "skin joint weights",
+      shape: coreAssetLayout.sections.jointWeights,
+    }),
+    label: "skin joint weights",
+  });
+  const connections = asU32({
+    array: exactShape({
+      array: arrayAt(archive, "rig_joint_connections"),
+      label: "rig connections",
+      shape: [coreAssetLayout.connectionCount, 2],
+    }),
+    label: "rig connections",
+  });
+  const parents = deriveParents(connections);
 
-  const payloads = {
-    positions: { bytes: encodeF32(positions), componentType: "f32", shape: [9084, 3] },
-    normals: {
-      bytes: encodeF32(computeNormals(positions, indices)),
+  const payloads: ReadonlyArray<BinaryPayload> = [
+    {
+      name: "positions",
+      bytes: encodeF32(positions),
       componentType: "f32",
-      shape: [9084, 3],
+      shape: coreAssetLayout.sections.positions,
     },
-    indices: { bytes: encodeU32(indices), componentType: "u32", shape: [18152, 3] },
-    jointIndices: { bytes: encodeU32(jointIndices), componentType: "u32", shape: [9084, 5] },
-    jointWeights: { bytes: encodeF32(jointWeights), componentType: "f32", shape: [9084, 5] },
-    inverseBindMatrices: {
+    {
+      name: "normals",
+      bytes: encodeF32(computeNormals({ positions, indices })),
+      componentType: "f32",
+      shape: coreAssetLayout.sections.normals,
+    },
+    {
+      name: "indices",
+      bytes: encodeU32(indices),
+      componentType: "u32",
+      shape: coreAssetLayout.sections.indices,
+    },
+    {
+      name: "jointIndices",
+      bytes: encodeU32(jointIndices),
+      componentType: "u32",
+      shape: coreAssetLayout.sections.jointIndices,
+    },
+    {
+      name: "jointWeights",
+      bytes: encodeF32(jointWeights),
+      componentType: "f32",
+      shape: coreAssetLayout.sections.jointWeights,
+    },
+    {
+      name: "inverseBindMatrices",
       bytes: encodeF32(inverseBindMatrices(bindMatrices)),
       componentType: "f32",
-      shape: [27, 4, 4],
+      shape: coreAssetLayout.sections.inverseBindMatrices,
     },
-    neutralJoints: {
-      bytes: encodeF32(neutralJoints(jointBytes)),
+    {
+      name: "neutralJoints",
+      bytes: encodeF32(neutralJoints(input.jointBytes)),
       componentType: "f32",
-      shape: [27, 3],
+      shape: coreAssetLayout.sections.neutralJoints,
     },
-  } as const;
-  let byteOffset = 0;
-  const sections: Record<string, BinarySection> = {};
-  for (const [name, payload] of Object.entries(payloads)) {
-    byteOffset = aligned(byteOffset);
-    sections[name] = {
-      byteLength: payload.bytes.byteLength,
-      byteOffset,
-      componentType: payload.componentType,
-      shape: payload.shape,
-    };
-    byteOffset += payload.bytes.byteLength;
-  }
-  const binary = new Uint8Array(aligned(byteOffset));
-  for (const [name, payload] of Object.entries(payloads)) {
-    binary.set(payload.bytes, sections[name]!.byteOffset);
-  }
+  ];
+  const { binary, sections } = packPayloads(payloads);
   const manifest = {
     kind: "ardy-core-skin@1",
     source: {
-      repository: "https://github.com/nv-tlabs/ardy",
-      revision: "693f74d13b3d04a0a22ce127ee79c929dd89756b",
-      jointsSha256: sha256(jointBytes),
-      skinSha256: sha256(skinBytes),
+      ...coreAssetSource,
+      jointsSha256: sha256(input.jointBytes),
+      skinSha256: sha256(input.skinBytes),
     },
     binary: { byteLength: binary.byteLength, sha256: sha256(binary) },
-    vertexCount: 9084,
-    triangleCount: 18152,
-    jointCount: 27,
-    influencesPerVertex: 5,
-    jointNames: namesArray.values,
+    vertexCount: coreAssetLayout.vertexCount,
+    triangleCount: coreAssetLayout.triangleCount,
+    jointCount: coreAssetLayout.jointCount,
+    influencesPerVertex: coreAssetLayout.influencesPerVertex,
+    jointNames: [...namesArray.values],
     parents,
     sections,
   };
+  return { binary, manifestJson: `${JSON.stringify(manifest, null, 2)}\n` };
+};
+
+const writeCoreAssetBundle = async (input: {
+  readonly bundle: DerivedCoreAssetBundle;
+  readonly outputDirectory: string;
+}): Promise<void> => {
   await mkdir(input.outputDirectory, { recursive: true });
   await Promise.all([
-    writeFile(join(input.outputDirectory, "core-skin.bin"), binary),
-    writeFile(
-      join(input.outputDirectory, "core-skin.json"),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-    ),
+    writeFile(join(input.outputDirectory, "core-skin.bin"), input.bundle.binary),
+    writeFile(join(input.outputDirectory, "core-skin.json"), input.bundle.manifestJson),
   ]);
+};
+
+/** Read pinned upstream artifacts, derive one admitted bundle, then write both admitted outputs. */
+export const buildCoreAssetBundle = async (
+  input: CoreAssetBundleBuildConfig,
+): Promise<void> => {
+  const [skinBytes, jointBytes] = await Promise.all([
+    readFile(join(input.sourceDirectory, "skin_standard.npz")),
+    readFile(join(input.sourceDirectory, "joints.p")),
+  ]);
+  await writeCoreAssetBundle({
+    bundle: deriveCoreAssetBundle({ jointBytes, skinBytes }),
+    outputDirectory: input.outputDirectory,
+  });
 };

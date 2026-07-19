@@ -33,6 +33,7 @@ export default {
     dedupe: ["react", "react-dom", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
   },
   server: {
+    host: "127.0.0.1",
     port: 5193,
     strictPort: true,
   },
