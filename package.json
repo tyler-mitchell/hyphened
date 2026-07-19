@@ -8,6 +8,7 @@
     "check": "vp check",
     "preview": "vp preview",
     "prepare:assets": "tsx scripts/prepare-core-assets.ts",
+    "motion:trace": "tsx scripts/trace-motion-scene.ts",
     "start": "node .output/server/index.mjs",
     "test": "vp test run",
     "text-encoder": "TEXT_ENCODERS_DIR=models/text-encoders HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .runtime/ardy/.venv/bin/python .runtime/ardy/scripts/run_text_encoder_server.py --host 127.0.0.1 --port 9550 --device cpu --tmp-folder .runtime/text-encoder-output"

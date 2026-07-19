@@ -6,6 +6,7 @@ models
 .output
 .tanstack
 .vinxi
+.artifacts
 dist
 dist-ssr
 *.local
