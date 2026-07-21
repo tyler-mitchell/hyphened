@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "concurrently --kill-others --names app,text-encoder \"vp run dev:app\" \"vp run text-encoder\"",
     "dev:app": "vp dev",
+    "export:upstream-oracle": "tsx scripts/export-upstream-neural-oracle.ts",
     "build": "vp build",
     "check": "vp check",
     "preview": "concurrently --kill-others --names app,text-encoder \"vp run preview:app\" \"vp run text-encoder\"",
@@ -34,6 +35,7 @@
     "typegpu": "catalog:",
     "webgpu-engine": "workspace:*",
     "wgpu-matrix": "catalog:",
+    "xstate": "catalog:",
     "yaml": "^2.8.4"
   },
   "devDependencies": {
