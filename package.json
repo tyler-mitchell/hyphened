@@ -49,6 +49,7 @@
     "fflate": "catalog:",
     "nitro": "catalog:",
     "playwright": "catalog:",
+    "sharp": "catalog:",
     "tsx": "catalog:",
     "typegpu-devtools": "workspace:*",
     "typescript": "catalog:",
