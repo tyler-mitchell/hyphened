@@ -15,7 +15,7 @@
     "start": "concurrently --kill-others --names app,text-encoder \"vp run start:app\" \"vp run text-encoder\"",
     "start:app": "node .output/server/index.mjs",
     "test": "vp test run",
-    "text-encoder": "TEXT_ENCODERS_DIR=models/text-encoders HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .runtime/ardy/.venv/bin/python .runtime/ardy/scripts/run_text_encoder_server.py --host 127.0.0.1 --port 9550 --device cpu --tmp-folder .runtime/text-encoder-output"
+    "text-encoder": "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .runtime/ardy/.venv/bin/python .runtime/ardy/scripts/run_text_encoder_server.py --host 127.0.0.1 --port 9550 --device cpu --tmp-folder .runtime/text-encoder-output"
   },
   "dependencies": {
     "@gradio/client": "catalog:",
