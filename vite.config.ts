@@ -17,7 +17,7 @@ export default {
     ignorePatterns: ["**/.nitro/**", "**/.output/**", "**/.tanstack/**", "**/node_modules/**"],
   },
   optimizeDeps: {
-    exclude: ["typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
+    exclude: ["arktype", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
   },
   plugins: [
     ...devtoolsPlugins,
