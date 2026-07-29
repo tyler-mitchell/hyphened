@@ -6,6 +6,7 @@
     "dev": "concurrently --kill-others --names app,text-encoder \"vp run dev:app\" \"vp run text-encoder\"",
     "dev:app": "vp dev",
     "encode:prompt": "tsx scripts/materialize-motion-prompt.ts",
+    "export:runtime-checkpoint": "tsx scripts/export-runtime-checkpoint.ts",
     "export:upstream-oracle": "tsx scripts/export-upstream-neural-oracle.ts",
     "build": "vp build",
     "check": "vp check",
