@@ -13,7 +13,6 @@
     "preview": "concurrently --kill-others --names app,text-encoder \"vp run preview:app\" \"vp run text-encoder\"",
     "preview:app": "vp preview",
     "prepare:assets": "tsx scripts/prepare-core-assets.ts",
-    "trace:motion": "tsx scripts/trace-motion-scene.ts",
     "start": "concurrently --kill-others --names app,text-encoder \"vp run start:app\" \"vp run text-encoder\"",
     "start:app": "node .output/server/index.mjs",
     "test": "vp test run",
