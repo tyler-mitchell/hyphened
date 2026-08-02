@@ -28,6 +28,8 @@ export default {
   ],
   resolve: {
     alias: {
+      "core-time/react": resolve(import.meta.dirname, "../../packages/core-time/src/react.ts"),
+      "core-time": resolve(import.meta.dirname, "../../packages/core-time/src/index.ts"),
       "webgpu-engine": resolve(import.meta.dirname, "../../packages/webgpu-engine/src/index.ts"),
     },
     dedupe: ["react", "react-dom", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
