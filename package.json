@@ -35,6 +35,7 @@
     "arktype": "catalog:",
     "concurrently": "catalog:",
     "core-time": "workspace:*",
+    "core-time-editor": "workspace:*",
     "effect": "catalog:",
     "npyjs": "catalog:",
     "react": "catalog:",

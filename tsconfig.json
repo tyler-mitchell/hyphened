@@ -13,6 +13,7 @@
     "moduleResolution": "Bundler",
     "paths": {
       "core-time": ["../../packages/core-time/src/index.ts"],
+      "core-time-editor": ["../../packages/core-time-editor/src/index.ts"],
       "core-time/react": ["../../packages/core-time/src/react.ts"],
       "webgpu-engine": ["../../packages/webgpu-engine/src/index.ts"]
     },
