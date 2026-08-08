@@ -28,9 +28,9 @@ export default {
   ],
   resolve: {
     alias: {
-      "core-time-editor": resolve(import.meta.dirname, "../../packages/core-time-editor/src/index.ts"),
-      "core-time/react": resolve(import.meta.dirname, "../../packages/core-time/src/react.ts"),
-      "core-time": resolve(import.meta.dirname, "../../packages/core-time/src/index.ts"),
+      "@coretime/editor": resolve(import.meta.dirname, "../../packages/core-time-editor/src/index.ts"),
+      "@coretime/core/react": resolve(import.meta.dirname, "../../packages/core-time/src/react.ts"),
+      "@coretime/core": resolve(import.meta.dirname, "../../packages/core-time/src/index.ts"),
       "webgpu-engine": resolve(import.meta.dirname, "../../packages/webgpu-engine/src/index.ts"),
     },
     dedupe: ["react", "react-dom", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],

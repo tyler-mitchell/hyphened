@@ -12,9 +12,9 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "core-time": ["../../packages/core-time/src/index.ts"],
-      "core-time-editor": ["../../packages/core-time-editor/src/index.ts"],
-      "core-time/react": ["../../packages/core-time/src/react.ts"],
+      "@coretime/core": ["../../packages/core-time/src/index.ts"],
+      "@coretime/editor": ["../../packages/core-time-editor/src/index.ts"],
+      "@coretime/core/react": ["../../packages/core-time/src/react.ts"],
       "webgpu-engine": ["../../packages/webgpu-engine/src/index.ts"]
     },
     "resolveJsonModule": true,
