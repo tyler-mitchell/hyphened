@@ -1,13 +1,28 @@
-import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import { typegpuBrowserProject, typegpuDevtools } from "typegpu-devtools/vitest-plugin";
+import { browserConsole } from "vite-browser-console";
 import type { Vite } from "vite-plus/test/node";
 
 const devtoolsPlugins: Vite.Plugin[] = typegpuDevtools();
-const browserProject = typegpuBrowserProject() satisfies Vite.UserConfig;
+const typegpuProject = typegpuBrowserProject();
+const dedupe = ["react", "react-dom", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"];
+const browserProject = {
+  ...typegpuProject,
+  optimizeDeps: {
+    ...typegpuProject.optimizeDeps,
+    include: [
+      "react",
+      "react/jsx-runtime",
+      "react-dom",
+      "use-sync-external-store/shim",
+      "use-sync-external-store/shim/with-selector",
+    ],
+  },
+  resolve: { dedupe, tsconfigPaths: true },
+} satisfies Vite.UserConfig;
 
 export default {
   fmt: {
@@ -20,6 +35,7 @@ export default {
     exclude: ["arktype", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
   },
   plugins: [
+    browserConsole({ directory: ".runtime/browser-console" }),
     ...devtoolsPlugins,
     tailwindcss(),
     ...(process.env.VITEST === "true" ? [] : [tanstackStart({ srcDirectory: "src" })]),
@@ -27,13 +43,8 @@ export default {
     ...(process.env.VITEST === "true" ? [] : [nitro()]),
   ],
   resolve: {
-    alias: {
-      "@coretime/editor": resolve(import.meta.dirname, "../../packages/core-time-editor/src/index.ts"),
-      "@coretime/core/react": resolve(import.meta.dirname, "../../packages/core-time/src/react.ts"),
-      "@coretime/core": resolve(import.meta.dirname, "../../packages/core-time/src/index.ts"),
-      "webgpu-engine": resolve(import.meta.dirname, "../../packages/webgpu-engine/src/index.ts"),
-    },
-    dedupe: ["react", "react-dom", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
+    dedupe,
+    tsconfigPaths: true,
   },
   server: {
     host: "127.0.0.1",
