@@ -2,17 +2,32 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
-import { typegpuBrowserProject, typegpuDevtools } from "typegpu-devtools/vitest-plugin";
+import {
+  typegpuBrowserProject,
+  typegpuDevtools,
+} from "typegpu-devtools/vitest-plugin";
 import { browserConsole } from "vite-browser-console";
 import type { Vite } from "vite-plus/test/node";
 
 const devtoolsPlugins: Vite.Plugin[] = typegpuDevtools();
 const typegpuProject = typegpuBrowserProject();
-const dedupe = ["react", "react-dom", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"];
+const dedupe = [
+  "react",
+  "react-dom",
+  "typegpu",
+  "typegpu/common",
+  "typegpu/data",
+  "typegpu/std",
+];
 const browserProject = {
   ...typegpuProject,
+  plugins: [browserConsole(), ...(typegpuProject.plugins ?? [])],
   optimizeDeps: {
     ...typegpuProject.optimizeDeps,
+    exclude: [
+      ...(typegpuProject.optimizeDeps?.exclude ?? []),
+      "@surrealdb/wasm",
+    ],
     include: [
       "react",
       "react/jsx-runtime",
@@ -26,19 +41,46 @@ const browserProject = {
 
 export default {
   fmt: {
-    ignorePatterns: ["**/.nitro/**", "**/.output/**", "**/.tanstack/**", "**/node_modules/**"],
+    ignorePatterns: [
+      "**/.nitro/**",
+      "**/.output/**",
+      "**/.tanstack/**",
+      "**/node_modules/**",
+    ],
   },
   lint: {
-    ignorePatterns: ["**/.nitro/**", "**/.output/**", "**/.tanstack/**", "**/node_modules/**"],
+    ignorePatterns: [
+      "**/.nitro/**",
+      "**/.output/**",
+      "**/.tanstack/**",
+      "**/node_modules/**",
+    ],
   },
   optimizeDeps: {
-    exclude: ["arktype", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
+    exclude: [
+      "@surrealdb/wasm",
+      "arktype",
+      "typegpu",
+      "typegpu/common",
+      "typegpu/data",
+      "typegpu/std",
+    ],
+    esbuildOptions: {
+      target: "esnext",
+    },
   },
   plugins: [
-    browserConsole({ directory: ".runtime/browser-console" }),
+    browserConsole({
+      directory: "console-logs",
+      maxErrorCharacters: 32_000,
+      maxFileCharacters: 256_000,
+      maxUniqueErrors: 128,
+    }),
     ...devtoolsPlugins,
     tailwindcss(),
-    ...(process.env.VITEST === "true" ? [] : [tanstackStart({ srcDirectory: "src" })]),
+    ...(process.env.VITEST === "true"
+      ? []
+      : [tanstackStart({ srcDirectory: "src" })]),
     viteReact(),
     ...(process.env.VITEST === "true" ? [] : [nitro()]),
   ],
