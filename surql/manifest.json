@@ -3,7 +3,7 @@
   "stages": [
     {
       "kind": "schema",
-      "files": ["schema/001_prompt_library.surql"]
+      "files": ["schema/001_motion_products.surql"]
     }
   ]
 }
