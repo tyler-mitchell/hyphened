@@ -1,41 +1,106 @@
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
-import { typegpuBrowserProject, typegpuDevtools } from "typegpu-devtools/vitest-plugin";
+import {
+  typegpuBrowserProject,
+  typegpuDevtools,
+} from "typegpu-devtools/vitest-plugin";
+import { browserConsole } from "vite-browser-console";
+import { searchForWorkspaceRoot } from "vite";
 import type { Vite } from "vite-plus/test/node";
 
+const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const devtoolsPlugins: Vite.Plugin[] = typegpuDevtools();
-const browserProject = typegpuBrowserProject() satisfies Vite.UserConfig;
+const typegpuProject = typegpuBrowserProject();
+const dedupe = [
+  "react",
+  "react-dom",
+  "typegpu",
+  "typegpu/common",
+  "typegpu/data",
+  "typegpu/std",
+];
+const browserProject = {
+  ...typegpuProject,
+  plugins: [browserConsole(), ...(typegpuProject.plugins ?? [])],
+  optimizeDeps: {
+    ...typegpuProject.optimizeDeps,
+    exclude: [
+      ...(typegpuProject.optimizeDeps?.exclude ?? []),
+      "@surrealdb/wasm",
+    ],
+    include: [
+      "react",
+      "react/jsx-runtime",
+      "react-dom",
+      "use-sync-external-store/shim",
+      "use-sync-external-store/shim/with-selector",
+    ],
+  },
+  resolve: { dedupe, tsconfigPaths: true },
+} satisfies Vite.UserConfig;
 
 export default {
   fmt: {
-    ignorePatterns: ["**/.nitro/**", "**/.output/**", "**/.tanstack/**", "**/node_modules/**"],
+    ignorePatterns: [
+      "**/.nitro/**",
+      "**/.output/**",
+      "**/.tanstack/**",
+      "**/node_modules/**",
+    ],
   },
   lint: {
-    ignorePatterns: ["**/.nitro/**", "**/.output/**", "**/.tanstack/**", "**/node_modules/**"],
+    ignorePatterns: [
+      "**/.nitro/**",
+      "**/.output/**",
+      "**/.tanstack/**",
+      "**/node_modules/**",
+    ],
   },
   optimizeDeps: {
-    exclude: ["arktype", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
+    exclude: [
+      "@surrealdb/wasm",
+      "arktype",
+      "typegpu",
+      "typegpu/common",
+      "typegpu/data",
+      "typegpu/std",
+    ],
+    esbuildOptions: {
+      target: "esnext",
+    },
   },
   plugins: [
+    browserConsole({
+      directory: "console-logs",
+      maxErrorCharacters: 32_000,
+      maxFileCharacters: 256_000,
+      maxUniqueErrors: 128,
+    }),
     ...devtoolsPlugins,
     tailwindcss(),
-    ...(process.env.VITEST === "true" ? [] : [tanstackStart({ srcDirectory: "src" })]),
+    ...(process.env.VITEST === "true"
+      ? []
+      : [tanstackStart({ srcDirectory: "src" })]),
     viteReact(),
     ...(process.env.VITEST === "true" ? [] : [nitro()]),
   ],
   resolve: {
-    alias: {
-      "@coretime/editor": resolve(import.meta.dirname, "../../packages/core-time-editor/src/index.ts"),
-      "@coretime/core/react": resolve(import.meta.dirname, "../../packages/core-time/src/react.ts"),
-      "@coretime/core": resolve(import.meta.dirname, "../../packages/core-time/src/index.ts"),
-      "webgpu-engine": resolve(import.meta.dirname, "../../packages/webgpu-engine/src/index.ts"),
-    },
-    dedupe: ["react", "react-dom", "typegpu", "typegpu/common", "typegpu/data", "typegpu/std"],
+    dedupe,
+    tsconfigPaths: true,
   },
   server: {
+    // Forward the page's actionable diagnostics into the file-backed browser console plugin.
+    forwardConsole: {
+      unhandledErrors: true,
+      logLevels: ["error", "warn"],
+    },
+    fs: {
+      allow: [searchForWorkspaceRoot(appRoot)],
+    },
     host: "127.0.0.1",
     port: 5193,
     strictPort: true,
