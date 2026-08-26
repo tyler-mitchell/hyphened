@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -7,8 +9,10 @@ import {
   typegpuDevtools,
 } from "typegpu-devtools/vitest-plugin";
 import { browserConsole } from "vite-browser-console";
+import { searchForWorkspaceRoot } from "vite";
 import type { Vite } from "vite-plus/test/node";
 
+const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const devtoolsPlugins: Vite.Plugin[] = typegpuDevtools();
 const typegpuProject = typegpuBrowserProject();
 const dedupe = [
@@ -89,6 +93,14 @@ export default {
     tsconfigPaths: true,
   },
   server: {
+    // Forward the page's actionable diagnostics into the file-backed browser console plugin.
+    forwardConsole: {
+      unhandledErrors: true,
+      logLevels: ["error", "warn"],
+    },
+    fs: {
+      allow: [searchForWorkspaceRoot(appRoot)],
+    },
     host: "127.0.0.1",
     port: 5193,
     strictPort: true,
