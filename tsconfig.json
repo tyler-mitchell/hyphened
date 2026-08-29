@@ -16,6 +16,7 @@
       "@coretime/editor": ["../../packages/core-time-editor/src/index.ts"],
       "@coretime/core/react": ["../../packages/core-time/src/react.ts"],
       "webgpu-engine": ["../../packages/webgpu-engine/src/index.ts"],
+      "webgpu-engine/react": ["../../packages/webgpu-engine/src/react.tsx"],
       "webgpu-engine/witness": ["../../packages/webgpu-engine/src/witness-engine.ts"]
     },
     "resolveJsonModule": true,
