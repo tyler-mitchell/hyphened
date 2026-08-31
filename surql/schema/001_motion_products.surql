@@ -11,7 +11,6 @@ DEFINE FIELD IF NOT EXISTS cache_key ON TABLE motion_product TYPE string READONL
 DEFINE FIELD IF NOT EXISTS provider ON TABLE motion_product TYPE string READONLY;
 DEFINE FIELD IF NOT EXISTS specification ON TABLE motion_product TYPE string READONLY;
 DEFINE FIELD IF NOT EXISTS manifest ON TABLE motion_product TYPE record<motion_artifact> REFERENCE ON DELETE REJECT;
-DEFINE FIELD IF NOT EXISTS representation ON TABLE motion_product TYPE record<motion_artifact> REFERENCE ON DELETE REJECT;
 DEFINE FIELD IF NOT EXISTS created_at ON TABLE motion_product TYPE datetime DEFAULT ALWAYS time::now() READONLY;
 DEFINE FIELD IF NOT EXISTS updated_at ON TABLE motion_product TYPE datetime VALUE time::now();
 DEFINE INDEX IF NOT EXISTS motion_product_cache_key ON TABLE motion_product FIELDS cache_key UNIQUE;
