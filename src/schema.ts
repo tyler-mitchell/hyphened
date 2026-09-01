@@ -7,7 +7,7 @@ import {
   FRAMES_PER_TOKEN,
   STREAMING_WINDOW_FRAME_CAPACITY,
   TEXT_EMBEDDING_WIDTH,
-} from "./providers/ardy/generation/layout";
+} from "./provider/generation/layout";
 
 export const COMPUTE_WORKGROUP_SIZE = 256;
 export const DIFFUSION_WORKGROUP_SIZE = 64;

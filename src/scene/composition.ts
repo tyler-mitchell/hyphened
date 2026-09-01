@@ -2,12 +2,13 @@ import type {
   TimelineClockName,
   TimelineCompositionEventInput,
   TimelineCompositionEventResolver,
+  TimelineCompositionVersion,
   TimelineEventKind,
   TimelineNode,
   TimelineSeriesId,
 } from "@coretime/core";
 
-import { MOTION_PROMPT_LIBRARY } from "../providers/ardy/prompt/embedding";
+import { MOTION_PROMPT_LIBRARY } from "../provider/prompt/embedding";
 import {
   $,
   ActorPresence,
@@ -17,12 +18,18 @@ import {
   RootConstraint,
   type ScenePresentationConfiguration,
 } from "../schema";
-import { authoredActor } from "./authored-scene";
-import type { motionTimelineDeclaration } from "../motion-scene/timeline";
+import { authoredActor } from "./default";
+import type { motionTimelineDeclaration } from "./timeline";
 
 export const SCENE_COMPOSITION = "scene";
-export { MOTION_ACTOR_EVENT, MOTION_PROMPT_EVENT, MOTION_ROUTE_EVENT } from "./scene-events";
-import { MOTION_ACTOR_EVENT, MOTION_PROMPT_EVENT, MOTION_ROUTE_EVENT } from "./scene-events";
+export const MOTION_PROMPT_EVENT = "motion/prompt" as const;
+export const MOTION_ACTOR_EVENT = "motion/actor" as const;
+export const MOTION_ROUTE_EVENT = "motion/route" as const;
+
+export const compositionRevision = (version: TimelineCompositionVersion): string =>
+  version.kind === "declaration"
+    ? version.fingerprint
+    : `${version.position.runId}:${version.position.branchId}:${String(version.position.index)}`;
 
 export const actorGroupId = (subject: string) => `actor/${subject}`;
 export const actorSubject = (groupId: string): string | undefined =>
