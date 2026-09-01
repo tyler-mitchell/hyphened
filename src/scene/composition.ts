@@ -1,4 +1,3 @@
-import { type } from "arktype";
 import type {
   TimelineClockName,
   TimelineCompositionEditEventContext,
@@ -9,8 +8,16 @@ import type {
   TimelineSeriesId,
 } from "@coretime/core";
 
-import { RootConstraint } from "../motion/request";
 import { MOTION_PROMPT_LIBRARY } from "../providers/ardy/prompt/embedding";
+import {
+  $,
+  ActorPresence,
+  CameraItemData,
+  DEFAULT_SCENE_PRESENTATION,
+  PromptItemData,
+  RootConstraint,
+  type ScenePresentationConfiguration,
+} from "../schema";
 import { authoredActor } from "./authored-scene";
 import type { motionTimelineDeclaration } from "../motion-scene/timeline";
 
@@ -24,49 +31,6 @@ export const actorSubject = (groupId: string): string | undefined =>
 export const actorTrackId = (input: { readonly subject: string; readonly track: string }) =>
   `${input.track}/${input.subject}`;
 export const actorTrackKind = (trackId: string) => trackId.split("/")[0] ?? trackId;
-
-export const PromptItemData = type({ prompt: "string >= 1" });
-export type PromptItemData = typeof PromptItemData.infer;
-
-export const ActorPresence = type({ active: "boolean", subject: "string >= 1" });
-export type ActorPresence = typeof ActorPresence.infer;
-
-const CameraPoint = type(["number", "number", "number"]);
-export const CameraProjectionData = type({
-  far: "number > 0",
-  fieldOfViewY: "0 < number < 3.141592653589793",
-  kind: "'perspective'",
-  near: "number > 0",
-});
-export type CameraProjectionData = typeof CameraProjectionData.infer;
-
-const CameraTargetData = type({
-  entities: type("string >= 1").array().atLeastLength(1),
-  kind: "'entities'",
-  offset: CameraPoint,
-}).or({
-  kind: "'point'",
-  position: CameraPoint,
-});
-
-export const CameraItemData = type({
-  distance: "number > 0",
-  kind: "'camera'",
-  label: "string >= 1",
-  mode: "'orbit'",
-  pitch: "number",
-  projection: CameraProjectionData,
-  target: CameraTargetData,
-  yaw: "number",
-}).or({
-  kind: "'camera'",
-  label: "string >= 1",
-  mode: "'look-at'",
-  position: CameraPoint,
-  projection: CameraProjectionData,
-  target: CameraTargetData,
-});
-export type CameraItemData = typeof CameraItemData.infer;
 
 export const CAMERA_TRACK = "camera";
 
@@ -147,44 +111,27 @@ export const actorGroup = (subject: string): SceneNode => {
 export const cameraTrack = (input: {
   readonly durationFrames: number;
   readonly entities: readonly string[];
+  readonly presentation?: ScenePresentationConfiguration["camera"];
 }): SceneNode => {
-  const cut = Math.floor(input.durationFrames / 2);
-  const target = { entities: input.entities, kind: "entities" as const, offset: [0, 0, 0] };
-  const projection = {
-    far: 1_000,
-    fieldOfViewY: Math.PI / 4,
-    kind: "perspective" as const,
-    near: 0.1,
-  };
+  const presentation = input.presentation ?? DEFAULT_SCENE_PRESENTATION.camera;
+  const cut = Math.floor(input.durationFrames * presentation.cutFraction);
+  const target =
+    presentation.target.kind === "entities"
+      ? { ...presentation.target, entities: input.entities }
+      : presentation.target;
+  const camera = (shot: ScenePresentationConfiguration["camera"]["shots"][number]) =>
+    CameraItemData.assert({ ...shot, kind: "camera", projection: presentation.projection, target });
   return {
-    data: { label: "Camera" },
+    data: { label: presentation.label },
     id: CAMERA_TRACK,
     items: [
       {
-        data: CameraItemData.assert({
-          distance: 5.5,
-          kind: "camera",
-          label: "Opening Camera",
-          mode: "orbit",
-          pitch: 0.22,
-          projection,
-          target,
-          yaw: 0.55,
-        }),
+        data: camera(presentation.shots[0]),
         id: "camera-0",
         range: { clock: "motionFrame", duration: cut, start: 0 },
       },
       {
-        data: CameraItemData.assert({
-          distance: 4.5,
-          kind: "camera",
-          label: "Side Camera",
-          mode: "orbit",
-          pitch: 0.12,
-          projection,
-          target,
-          yaw: 1.1,
-        }),
+        data: camera(presentation.shots[1]),
         id: "camera-1",
         range: {
           clock: "motionFrame",
@@ -202,49 +149,26 @@ const availablePrompts: ReadonlySet<string> = new Set(
   MOTION_PROMPT_LIBRARY.map(({ prompt }) => prompt),
 );
 
-const PromptSpan = type({
-  data: PromptItemData,
-  range: { clock: "'motionFrame'", duration: "number.integer > 0", start: "number.integer >= 0" },
-  "startEvent?": { data: PromptItemData, kind: `'${MOTION_PROMPT_EVENT}'`, subject: "string >= 1" },
-})
-  .narrow(
-    (item, context) =>
-      availablePrompts.has(item.data.prompt) ||
-      context.mustBe("a prompt with a conditioning feature in this build"),
-  )
-  .narrow(
-    (item, context) =>
-      item.startEvent === undefined ||
-      JSON.stringify(item.data) === JSON.stringify(item.startEvent.data) ||
-      context.mustBe("a prompt whose item and playback event agree"),
-  );
+const PromptSpan = $.PromptSpan.narrow(
+  (item, context) =>
+    availablePrompts.has(item.data.prompt) ||
+    context.mustBe("a prompt with a conditioning feature in this build"),
+).narrow(
+  (item, context) =>
+    item.startEvent === undefined ||
+    JSON.stringify(item.data) === JSON.stringify(item.startEvent.data) ||
+    context.mustBe("a prompt whose item and playback event agree"),
+);
 
-const PromptTrack = type({ items: PromptSpan.array() });
+const PromptTrack = $.PromptTrack.merge({ items: PromptSpan.array() });
 
-const RootTrack = type({
-  items: type({
-    at: { clock: "'motionFrame'", tick: "number.integer >= 0" },
-    data: RootConstraint,
-  }).array(),
-});
+const RootTrack = $.RootTrack;
 
-const CameraTrack = type({
-  id: `'${CAMERA_TRACK}'`,
-  items: type({
-    data: CameraItemData,
-    range: { clock: "'motionFrame'", duration: "number.integer > 0", start: "number.integer >= 0" },
-  }).array(),
-  kind: "'track'",
-  overlap: "'forbid'",
-});
+const CameraTrack = $.TimelineCameraTrack;
 
 const ACTOR_TRACK_ADMISSION = { [PROMPT_TRACK]: PromptTrack, [ROOT_TRACK]: RootTrack } as const;
 
-const ActorGroupShape = type({
-  children: type({ id: "string >= 1", kind: "'track'" }).array(),
-  id: "string >= 1",
-  kind: "'group'",
-}).narrow((group, context) => {
+const ActorGroupShape = $.ActorGroup.narrow((group, context) => {
   const subject = actorSubject(group.id);
   if (subject === undefined) return context.mustBe("an actor group");
   const expected = actorTrackEntries.map(([track]) => actorTrackId({ subject, track }));
@@ -300,13 +224,11 @@ export const sceneCompositionEvents: TimelineCompositionEventResolver<
       authoredFingerprint(context.before, subject) !== authoredFingerprint(context.after, subject),
   );
   return [
-    ...edited.map(
-      (subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
-        kind: MOTION_ROUTE_EVENT,
-        payload: { subject },
-        subject,
-      }),
-    ),
+    ...edited.map((subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
+      kind: MOTION_ROUTE_EVENT,
+      payload: { subject },
+      subject,
+    })),
     ...[...after]
       .filter((subject) => !before.has(subject))
       .map((subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
