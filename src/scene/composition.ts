@@ -15,8 +15,8 @@ import { authoredActor } from "./authored-scene";
 import type { motionTimelineDeclaration } from "../motion-scene";
 
 export const SCENE_COMPOSITION = "scene";
-export const MOTION_PROMPT_EVENT = "motion/prompt" as const;
-export const MOTION_ACTOR_EVENT = "motion/actor" as const;
+export { MOTION_ACTOR_EVENT, MOTION_PROMPT_EVENT, MOTION_ROUTE_EVENT } from "./scene-events";
+import { MOTION_ACTOR_EVENT, MOTION_PROMPT_EVENT, MOTION_ROUTE_EVENT } from "./scene-events";
 
 export const actorGroupId = (subject: string) => `actor/${subject}`;
 export const actorSubject = (groupId: string): string | undefined =>
@@ -92,15 +92,13 @@ export const actorGroup = (subject: string): SceneNode => {
     id: `root-${String(tick)}/${subject}`,
   }));
   return {
-    children: actorTrackEntries.map(
-      ([track, declared]): SceneNode => ({
-        data: { label: declared.label, tone: declared.tone },
-        id: actorTrackId({ subject, track }),
-        items: track === PROMPT_TRACK ? promptItems : rootItems,
-        kind: "track" as const,
-        overlap: declared.overlap,
-      }),
-    ),
+    children: actorTrackEntries.map(([track, declared]): SceneNode => ({
+      data: { label: declared.label, tone: declared.tone },
+      id: actorTrackId({ subject, track }),
+      items: track === PROMPT_TRACK ? promptItems : rootItems,
+      kind: "track" as const,
+      overlap: declared.overlap,
+    })),
     data: { label: subject },
     id: actorGroupId(subject),
     kind: "group" as const,
@@ -174,24 +172,41 @@ export const sceneCompositionEvents: TimelineCompositionEventResolver<
   }
   const before = actorSubjects(context.before);
   const after = actorSubjects(context.after);
+  const authoredFingerprint = (
+    document: TimelineCompositionEditEventContext<typeof motionTimelineDeclaration>["after"],
+    subject: string,
+  ) =>
+    JSON.stringify(
+      (document.compositions[SCENE_COMPOSITION]?.children ?? []).find(
+        (node) => node.id === actorGroupId(subject),
+      ),
+    );
+  const edited = [...after].filter(
+    (subject) =>
+      before.has(subject) &&
+      authoredFingerprint(context.before, subject) !== authoredFingerprint(context.after, subject),
+  );
   return [
+    ...edited.map(
+      (subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
+        kind: MOTION_ROUTE_EVENT,
+        payload: { subject },
+        subject,
+      }),
+    ),
     ...[...after]
       .filter((subject) => !before.has(subject))
-      .map(
-        (subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
-          kind: MOTION_ACTOR_EVENT,
-          payload: ActorPresence.assert({ active: true, subject }),
-          subject,
-        }),
-      ),
+      .map((subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
+        kind: MOTION_ACTOR_EVENT,
+        payload: ActorPresence.assert({ active: true, subject }),
+        subject,
+      })),
     ...[...before]
       .filter((subject) => !after.has(subject))
-      .map(
-        (subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
-          kind: MOTION_ACTOR_EVENT,
-          payload: ActorPresence.assert({ active: false, subject }),
-          subject,
-        }),
-      ),
+      .map((subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
+        kind: MOTION_ACTOR_EVENT,
+        payload: ActorPresence.assert({ active: false, subject }),
+        subject,
+      })),
   ];
 };
