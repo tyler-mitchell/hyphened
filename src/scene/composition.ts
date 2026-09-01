@@ -12,7 +12,7 @@ import type {
 import { RootConstraint } from "../motion/request";
 import { MOTION_PROMPT_LIBRARY } from "../providers/ardy/prompt/embedding";
 import { authoredActor } from "./authored-scene";
-import type { motionTimelineDeclaration } from "../motion-scene";
+import type { motionTimelineDeclaration } from "../motion-scene/timeline";
 
 export const SCENE_COMPOSITION = "scene";
 export { MOTION_ACTOR_EVENT, MOTION_PROMPT_EVENT, MOTION_ROUTE_EVENT } from "./scene-events";
