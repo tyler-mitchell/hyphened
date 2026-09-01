@@ -11,7 +11,7 @@ import type {
 
 import { RootConstraint } from "../motion/request";
 import { MOTION_PROMPT_LIBRARY } from "../providers/ardy/prompt/embedding";
-import { authoredActor, SCENE_SPAN_FRAMES } from "./authored-scene";
+import { authoredActor } from "./authored-scene";
 import type { motionTimelineDeclaration } from "../motion-scene";
 
 export const SCENE_COMPOSITION = "scene";
@@ -114,7 +114,7 @@ const availablePrompts: ReadonlySet<string> = new Set(
 const PromptSpan = type({
   data: PromptItemData,
   range: { clock: "'motionFrame'", duration: "number.integer > 0", start: "number.integer >= 0" },
-  startEvent: { data: PromptItemData, kind: `'${MOTION_PROMPT_EVENT}'`, subject: "string >= 1" },
+  "startEvent?": { data: PromptItemData, kind: `'${MOTION_PROMPT_EVENT}'`, subject: "string >= 1" },
 })
   .narrow(
     (item, context) =>
@@ -123,24 +123,12 @@ const PromptSpan = type({
   )
   .narrow(
     (item, context) =>
+      item.startEvent === undefined ||
       JSON.stringify(item.data) === JSON.stringify(item.startEvent.data) ||
       context.mustBe("a prompt whose item and playback event agree"),
   );
 
-const PromptTrack = type({ items: PromptSpan.array() }).narrow((track, context) => {
-  const spans = [...track.items].sort((left, right) => left.range.start - right.range.start);
-  const covered = spans.reduce(
-    (through, span) =>
-      span.range.start > through
-        ? Number.NaN
-        : Math.max(through, span.range.start + span.range.duration),
-    0,
-  );
-  return (
-    (Number.isFinite(covered) && (spans.length === 0 || covered >= SCENE_SPAN_FRAMES)) ||
-    context.mustBe("a gapless prompt condition covering the scene")
-  );
-});
+const PromptTrack = type({ items: PromptSpan.array() });
 
 const RootTrack = type({
   items: type({
