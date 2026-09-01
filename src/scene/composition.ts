@@ -31,6 +31,45 @@ export type PromptItemData = typeof PromptItemData.infer;
 export const ActorPresence = type({ active: "boolean", subject: "string >= 1" });
 export type ActorPresence = typeof ActorPresence.infer;
 
+const CameraPoint = type(["number", "number", "number"]);
+export const CameraProjectionData = type({
+  far: "number > 0",
+  fieldOfViewY: "0 < number < 3.141592653589793",
+  kind: "'perspective'",
+  near: "number > 0",
+});
+export type CameraProjectionData = typeof CameraProjectionData.infer;
+
+const CameraTargetData = type({
+  entities: type("string >= 1").array().atLeastLength(1),
+  kind: "'entities'",
+  offset: CameraPoint,
+}).or({
+  kind: "'point'",
+  position: CameraPoint,
+});
+
+export const CameraItemData = type({
+  distance: "number > 0",
+  kind: "'camera'",
+  label: "string >= 1",
+  mode: "'orbit'",
+  pitch: "number",
+  projection: CameraProjectionData,
+  target: CameraTargetData,
+  yaw: "number",
+}).or({
+  kind: "'camera'",
+  label: "string >= 1",
+  mode: "'look-at'",
+  position: CameraPoint,
+  projection: CameraProjectionData,
+  target: CameraTargetData,
+});
+export type CameraItemData = typeof CameraItemData.infer;
+
+export const CAMERA_TRACK = "camera";
+
 export const ACTOR_TRACKS = {
   prompts: {
     admits: PromptItemData,
@@ -105,6 +144,60 @@ export const actorGroup = (subject: string): SceneNode => {
   };
 };
 
+export const cameraTrack = (input: {
+  readonly durationFrames: number;
+  readonly entities: readonly string[];
+}): SceneNode => {
+  const cut = Math.floor(input.durationFrames / 2);
+  const target = { entities: input.entities, kind: "entities" as const, offset: [0, 0, 0] };
+  const projection = {
+    far: 1_000,
+    fieldOfViewY: Math.PI / 4,
+    kind: "perspective" as const,
+    near: 0.1,
+  };
+  return {
+    data: { label: "Camera" },
+    id: CAMERA_TRACK,
+    items: [
+      {
+        data: CameraItemData.assert({
+          distance: 5.5,
+          kind: "camera",
+          label: "Opening Camera",
+          mode: "orbit",
+          pitch: 0.22,
+          projection,
+          target,
+          yaw: 0.55,
+        }),
+        id: "camera-0",
+        range: { clock: "motionFrame", duration: cut, start: 0 },
+      },
+      {
+        data: CameraItemData.assert({
+          distance: 4.5,
+          kind: "camera",
+          label: "Side Camera",
+          mode: "orbit",
+          pitch: 0.12,
+          projection,
+          target,
+          yaw: 1.1,
+        }),
+        id: "camera-1",
+        range: {
+          clock: "motionFrame",
+          duration: input.durationFrames - cut,
+          start: cut,
+        },
+      },
+    ],
+    kind: "track",
+    overlap: "forbid",
+  };
+};
+
 const availablePrompts: ReadonlySet<string> = new Set(
   MOTION_PROMPT_LIBRARY.map(({ prompt }) => prompt),
 );
@@ -133,6 +226,16 @@ const RootTrack = type({
     at: { clock: "'motionFrame'", tick: "number.integer >= 0" },
     data: RootConstraint,
   }).array(),
+});
+
+const CameraTrack = type({
+  id: `'${CAMERA_TRACK}'`,
+  items: type({
+    data: CameraItemData,
+    range: { clock: "'motionFrame'", duration: "number.integer > 0", start: "number.integer >= 0" },
+  }).array(),
+  kind: "'track'",
+  overlap: "'forbid'",
 });
 
 const ACTOR_TRACK_ADMISSION = { [PROMPT_TRACK]: PromptTrack, [ROOT_TRACK]: RootTrack } as const;
@@ -165,6 +268,16 @@ export const sceneCompositionEvents: TimelineCompositionEventResolver<
   typeof motionTimelineDeclaration
 > = (context) => {
   for (const node of context.after.compositions[SCENE_COMPOSITION]?.children ?? []) {
+    if (node.id === CAMERA_TRACK) {
+      const track = CameraTrack.assert(node);
+      for (const item of track.items) {
+        const camera = CameraItemData.assert(item.data);
+        if (camera.projection.far <= camera.projection.near) {
+          throw new RangeError("Camera far plane must exceed its near plane.");
+        }
+      }
+      continue;
+    }
     const group = ActorGroupShape.assert(node);
     for (const child of group.children) {
       ACTOR_TRACK_ADMISSION[actorTrackKind(child.id) as ActorTrackId].assert(child);
