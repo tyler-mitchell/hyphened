@@ -11,7 +11,15 @@ import {
 
 export const COMPUTE_WORKGROUP_SIZE = 256;
 export const DIFFUSION_WORKGROUP_SIZE = 64;
+export const MOTION_GENERATION_CLOCK = "generationStep";
+export const MOTION_GENERATION_STEPS_PER_FRAME = 1;
 export const MOTION_FRAMES_PER_SECOND = 20;
+export const INITIAL_SUBJECT_COUNT = 2;
+export const REFERENCE_FRAME_CAPACITY = 680;
+export const SUBJECT_PHASE_FRAMES = 17;
+export const INITIAL_PRODUCT_SEED = 2;
+export const MOTION_PRODUCT_ID = "motion";
+export const ONE_MOTION_FRAME = { motionFrame: 1 } as const;
 export const MOTION_DRIVER_POLICY = {
   maxStepsPerAdvance: 2,
   onStepLimitExceeded: "drop",
@@ -38,6 +46,12 @@ export const $ = type.module({
     start: "U32",
   },
   AuthoredRootConstraint: { constraint: "RootConstraint", tick: "U32" },
+  AuthoredSubjectState: {
+    generation: "U32",
+    id: "NonEmptyString",
+    present: "boolean",
+    "request?": "MotionRequest",
+  },
   ActorGroup: {
     children: "ActorTrackChild[]",
     id: "string >= 1",
@@ -608,6 +622,7 @@ export const AuthoredActor = $.AuthoredActor.merge({
   roots: AuthoredRootConstraint.array().readonly(),
 }).readonly();
 export type AuthoredActor = typeof AuthoredActor.infer;
+export type AuthoredSubjectState = typeof $.AuthoredSubjectState.infer;
 
 export const RootKeyframe = $.RootKeyframe;
 export type RootKeyframe = typeof RootKeyframe.infer;
@@ -817,8 +832,6 @@ export type ScenePresentationConfigurationInput = typeof ScenePresentationConfig
 
 export const ActorPresence = $.ActorPresence;
 export type ActorPresence = typeof ActorPresence.infer;
-export const CameraProjectionData = $.PerspectiveProjection;
-export type CameraProjectionData = typeof CameraProjectionData.infer;
 export const CameraItemData = $.CameraItemData.narrow(
   (camera, context) =>
     camera.projection.far > camera.projection.near ||
