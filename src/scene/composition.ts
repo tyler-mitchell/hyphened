@@ -1,6 +1,5 @@
 import type {
   TimelineClockName,
-  TimelineCompositionEditEventContext,
   TimelineCompositionEventInput,
   TimelineCompositionEventResolver,
   TimelineEventKind,
@@ -153,20 +152,31 @@ const PromptSpan = $.PromptSpan.narrow(
   (item, context) =>
     availablePrompts.has(item.data.prompt) ||
     context.mustBe("a prompt with a conditioning feature in this build"),
-).narrow(
-  (item, context) =>
-    item.startEvent === undefined ||
-    JSON.stringify(item.data) === JSON.stringify(item.startEvent.data) ||
-    context.mustBe("a prompt whose item and playback event agree"),
-);
+)
+  .narrow(
+    (item, context) =>
+      item.startEvent === undefined ||
+      JSON.stringify(item.data) === JSON.stringify(item.startEvent.data) ||
+      context.mustBe("a prompt whose item and playback event agree"),
+  )
+  .pipe((item) => ({
+    ...item,
+    conditioning: {
+      identity: JSON.stringify({
+        kind: "artifact",
+        sha256: MOTION_PROMPT_LIBRARY.find(({ prompt }) => prompt === item.data.prompt)!.sha256,
+      }),
+    },
+  }))
+  .to($.MotionPromptSpan);
 
-const PromptTrack = $.PromptTrack.merge({ items: PromptSpan.array() });
+const PromptTrack = $.MotionPromptTrack.merge({ items: PromptSpan.array() });
 
 const RootTrack = $.RootTrack;
 
-const CameraTrack = $.TimelineCameraTrack;
-
-const ACTOR_TRACK_ADMISSION = { [PROMPT_TRACK]: PromptTrack, [ROOT_TRACK]: RootTrack } as const;
+const CameraTrack = $.TimelineCameraTrack.merge({
+  items: $.TimelineCameraTrackItem.merge({ data: CameraItemData }).array(),
+});
 
 const ActorGroupShape = $.ActorGroup.narrow((group, context) => {
   const subject = actorSubject(group.id);
@@ -178,65 +188,88 @@ const ActorGroupShape = $.ActorGroup.narrow((group, context) => {
   );
 });
 
-const actorSubjects = (
-  document: TimelineCompositionEditEventContext<typeof motionTimelineDeclaration>["after"],
-): ReadonlySet<string> =>
-  new Set(
-    (document.compositions[SCENE_COMPOSITION]?.children ?? []).flatMap((node) => {
-      const subject = actorSubject(node.id);
-      return subject === undefined ? [] : [subject];
-    }),
-  );
+const MotionActorGroup = ActorGroupShape.pipe((group) => ({
+  promptTrack: PromptTrack.assert(group.children[0]),
+  rootTrack: RootTrack.assert(group.children[1]),
+  subject: actorSubject(group.id)!,
+})).to($.MotionSceneActor);
+
+const contiguousFrameCount = (
+  items: readonly { readonly range: { readonly duration: number; readonly start: number } }[],
+): number | undefined => {
+  const ordered = items.toSorted((left, right) => left.range.start - right.range.start);
+  return ordered.length > 0 &&
+    ordered.every(
+      (item, index) =>
+        item.range.start ===
+        (index === 0 ? 0 : ordered[index - 1]!.range.start + ordered[index - 1]!.range.duration),
+    )
+    ? ordered.at(-1)!.range.start + ordered.at(-1)!.range.duration
+    : undefined;
+};
+
+export const SceneComposition = $.SceneCompositionInput.merge({
+  children: MotionActorGroup.or(CameraTrack).array(),
+})
+  .narrow((composition, context) => {
+    const actors = composition.children.flatMap((node) => ("subject" in node ? [node] : []));
+    const cameras = composition.children.flatMap((node) => ("subject" in node ? [] : [node]));
+    const subjects = new Set(actors.map(({ subject }) => subject));
+    const frameCount =
+      cameras[0] === undefined ? undefined : contiguousFrameCount(cameras[0].items);
+    return (
+      (actors.length > 0 &&
+        cameras.length === 1 &&
+        frameCount !== undefined &&
+        actors.every((actor) => contiguousFrameCount(actor.promptTrack.items) === frameCount) &&
+        cameras[0]!.items.every(
+          ({ data }) =>
+            data.target.kind !== "entities" ||
+            data.target.entities.every((subject) => subjects.has(subject)),
+        )) ||
+      context.mustBe("one camera track targeting at least one declared actor group")
+    );
+  })
+  .pipe((composition) => {
+    const actors = composition.children.flatMap((node) => ("subject" in node ? [node] : []));
+    const cameraTrack = composition.children.flatMap((node) =>
+      "subject" in node ? [] : [node],
+    )[0]!;
+    return {
+      actors,
+      cameraTrack,
+      frameCount: contiguousFrameCount(cameraTrack.items)!,
+    };
+  })
+  .to($.MotionSceneComposition);
 
 export const sceneCompositionEvents: TimelineCompositionEventResolver<
   typeof motionTimelineDeclaration
 > = (context) => {
-  for (const node of context.after.compositions[SCENE_COMPOSITION]?.children ?? []) {
-    if (node.id === CAMERA_TRACK) {
-      const track = CameraTrack.assert(node);
-      for (const item of track.items) {
-        const camera = CameraItemData.assert(item.data);
-        if (camera.projection.far <= camera.projection.near) {
-          throw new RangeError("Camera far plane must exceed its near plane.");
-        }
-      }
-      continue;
-    }
-    const group = ActorGroupShape.assert(node);
-    for (const child of group.children) {
-      ACTOR_TRACK_ADMISSION[actorTrackKind(child.id) as ActorTrackId].assert(child);
-    }
-  }
-  const before = actorSubjects(context.before);
-  const after = actorSubjects(context.after);
-  const authoredFingerprint = (
-    document: TimelineCompositionEditEventContext<typeof motionTimelineDeclaration>["after"],
-    subject: string,
-  ) =>
-    JSON.stringify(
-      (document.compositions[SCENE_COMPOSITION]?.children ?? []).find(
-        (node) => node.id === actorGroupId(subject),
-      ),
-    );
+  const afterScene = SceneComposition.assert(context.after.compositions[SCENE_COMPOSITION]);
+  const beforeComposition = context.before.compositions[SCENE_COMPOSITION];
+  const beforeActors =
+    beforeComposition === undefined ? [] : SceneComposition.assert(beforeComposition).actors;
+  const before = new Map(beforeActors.map((actor) => [actor.subject, actor]));
+  const after = new Map(afterScene.actors.map((actor) => [actor.subject, actor]));
   const edited = [...after].filter(
-    (subject) =>
-      before.has(subject) &&
-      authoredFingerprint(context.before, subject) !== authoredFingerprint(context.after, subject),
+    ([subject, actor]) =>
+      before.has(subject) && JSON.stringify(before.get(subject)) !== JSON.stringify(actor),
   );
   return [
-    ...edited.map((subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
+    ...edited.map(([subject]): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
       kind: MOTION_ROUTE_EVENT,
       payload: { subject },
       subject,
     })),
-    ...[...after]
+    ...[...after.keys()]
       .filter((subject) => !before.has(subject))
       .map((subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
         kind: MOTION_ACTOR_EVENT,
         payload: ActorPresence.assert({ active: true, subject }),
         subject,
       })),
-    ...[...before]
+    ...[...before.keys()]
       .filter((subject) => !after.has(subject))
       .map((subject): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
         kind: MOTION_ACTOR_EVENT,

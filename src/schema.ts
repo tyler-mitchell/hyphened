@@ -152,6 +152,19 @@ export const $ = type.module({
     jointCount: "number.integer > 0",
     skeleton: "string >= 1",
   },
+  MotionPromptSpan: ["PromptSpan", "&", { conditioning: { identity: "NonEmptyString" } }],
+  MotionPromptTrack: { items: "MotionPromptSpan[]" },
+  MotionRootTrack: { items: "RootTrackItem[]" },
+  MotionSceneActor: {
+    promptTrack: "MotionPromptTrack",
+    rootTrack: "MotionRootTrack",
+    subject: "NonEmptyString",
+  },
+  MotionSceneComposition: {
+    actors: "MotionSceneActor[] >= 1",
+    cameraTrack: "TimelineCameraTrack",
+    frameCount: "number.integer > 0",
+  },
   MotionPoseSampleRow: {
     padding: "tgpu.vec3u",
     present: "tgpu.u32",
@@ -305,6 +318,7 @@ export const $ = type.module({
   PromptItemData: { prompt: "string >= 1" },
   PromptSpan: {
     data: "PromptItemData",
+    id: "NonEmptyString",
     range: { clock: "'motionFrame'", duration: "number.integer > 0", start: "number.integer >= 0" },
     "startEvent?": {
       data: "PromptItemData",
@@ -385,6 +399,7 @@ export const $ = type.module({
     "transition/remove",
     "transition/set-duration",
   ),
+  SceneCompositionInput: { children: "unknown[]", clock: "'motionFrame'" },
   SceneHistoryInput: {
     action: "'undo' | 'redo'",
     transactionId: ["string >= 1", "=", () => crypto.randomUUID()],
@@ -804,10 +819,15 @@ export const ActorPresence = $.ActorPresence;
 export type ActorPresence = typeof ActorPresence.infer;
 export const CameraProjectionData = $.PerspectiveProjection;
 export type CameraProjectionData = typeof CameraProjectionData.infer;
-export const CameraItemData = $.CameraItemData;
+export const CameraItemData = $.CameraItemData.narrow(
+  (camera, context) =>
+    camera.projection.far > camera.projection.near ||
+    context.mustBe("a camera whose far plane exceeds its near plane"),
+);
 export type CameraItemData = typeof CameraItemData.infer;
 export const PromptItemData = $.PromptItemData;
 export type PromptItemData = typeof PromptItemData.infer;
+export type MotionSceneComposition = typeof $.MotionSceneComposition.infer;
 
 export const DEFAULT_SCENE_PRESENTATION = ScenePresentationConfiguration.assert({});
 
