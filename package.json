@@ -16,8 +16,12 @@
     "text-encoder": "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .runtime/ardy/.venv/bin/python .runtime/ardy/scripts/run_text_encoder_server.py --host 127.0.0.1 --port 9550 --device cpu --tmp-folder .runtime/text-encoder-output"
   },
   "dependencies": {
+    "@base-ui/react": "catalog:",
     "@coretime/core": "workspace:*",
+    "@coretime/editor": "workspace:*",
     "@hyphened/ui": "workspace:*",
+    "@legendapp/state": "catalog:",
+    "lucide-react": "catalog:",
     "@mcp-b/webmcp-types": "catalog:",
     "@surrealdb/wasm": "workspace:*",
     "@tanstack/react-router": "catalog:",
