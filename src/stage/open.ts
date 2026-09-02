@@ -51,7 +51,7 @@ export const openMotionProduction = async (input: {
   const presentation = ScenePresentationConfiguration.assert(input.presentation ?? {});
   const render = MotionRenderConfiguration.assert(input.render ?? {});
   const layout = presentation.actorLayout;
-  const subjects = Array.from({ length: INITIAL_SUBJECT_COUNT }, (_unused, row) => {
+  const seeded = Array.from({ length: INITIAL_SUBJECT_COUNT }, (_unused, row) => {
     const column = row % layout.columns;
     return {
       id: `actor-${row + 1}`,
@@ -69,10 +69,10 @@ export const openMotionProduction = async (input: {
         children: [
           cameraTrack({
             durationFrames: SCENE_SPAN_FRAMES,
-            entities: subjects.map(({ id }) => id),
+            entities: seeded.map(({ id }) => id),
             presentation: presentation.camera,
           }),
-          ...subjects.map(actorGroup),
+          ...seeded.map(actorGroup),
         ],
         clock: "motionFrame",
       },
@@ -82,12 +82,19 @@ export const openMotionProduction = async (input: {
   const compositionReadout = await input.timeline.composition.read({
     composition: SCENE_COMPOSITION,
   });
+  const composition = SceneComposition.assert(compositionReadout.composition);
+  // The authored composition is the one owner of actor identity, row, and placement.
+  const subjects = composition.actors.map(({ row, subject, worldOffset }) => ({
+    id: subject,
+    row,
+    worldOffset,
+  }));
   const program = compileMotionPipelineProgram({
     artifact: {
       id: compositionReadout.id,
       version: compositionRevision(compositionReadout.version),
     },
-    composition: SceneComposition.assert(compositionReadout.composition),
+    composition,
     framesPerSecond: MOTION_FRAMES_PER_SECOND,
     render,
     rig: binding.value,

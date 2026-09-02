@@ -22,7 +22,7 @@ export const MOTION_DRIVER_POLICY = {
 } as const;
 
 export const $ = type.module({
-  ActorColors: "Vector4[] >= 1",
+  ActorColors: "Vector4[] == 2",
   ActorTrackChild: { id: "string >= 1", kind: "'track'" },
   ActorLayout: {
     columns: "number.integer > 0",
@@ -108,7 +108,6 @@ export const $ = type.module({
     rootTrack: "RootKeyframe[]",
     seed: "U32",
     sourceFrameStart: "U32",
-    state: "NonEmptyString",
     timelineFrameStart: "U32",
   },
   MotionCompilationProgram: {
@@ -236,7 +235,6 @@ export const $ = type.module({
     product: "MotionProductSpecification",
     productFrameStart: "U32",
     revision: "U32",
-    state: "NonEmptyString",
     subject: "NonEmptyString",
     subjectGeneration: "U32",
   },
@@ -431,7 +429,7 @@ export const $ = type.module({
     kind: "'artifact'",
     sha256: "NonEmptyString",
   },
-  TextEmbeddingIdentity: "TextEmbeddingArtifactIdentity | TextEmbeddingRequestIdentity",
+  TextEmbeddingIdentity: "TextEmbeddingArtifactIdentity",
   TextEmbeddingInput: {
     identity: "TextEmbeddingIdentity",
     prompt: "NonEmptyString",
@@ -442,11 +440,6 @@ export const $ = type.module({
     model: "NonEmptyString",
     revision: "NonEmptyString",
     role: "NonEmptyString",
-  },
-  TextEmbeddingRequestIdentity: {
-    kind: "'request'",
-    requestId: "NonEmptyString",
-    revision: "number.integer >= 0",
   },
   TextEmbeddingSource: {
     "endpoint?": "NonEmptyString",

@@ -76,7 +76,6 @@ export const compileMotionPipelineProgram = (input: {
         ),
         seed: INITIAL_PRODUCT_SEED + actorIndex * 100 + clip,
         sourceFrameStart: actorIndex * frameCount + item.range.start,
-        state: item.data.prompt,
         timelineFrameStart: item.range.start,
       })),
     ),

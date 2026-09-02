@@ -173,11 +173,9 @@ const PromptSpan = $.PromptSpan.narrow(
   )
   .pipe((item) => ({
     ...item,
+    // The pinned embedding artifact's digest is the conditioning identity.
     conditioning: {
-      identity: JSON.stringify({
-        kind: "artifact",
-        sha256: MOTION_PROMPT_LIBRARY.find(({ prompt }) => prompt === item.data.prompt)!.sha256,
-      }),
+      identity: MOTION_PROMPT_LIBRARY.find(({ prompt }) => prompt === item.data.prompt)!.sha256,
     },
   }))
   .to($.MotionPromptSpan);
