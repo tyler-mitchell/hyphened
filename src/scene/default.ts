@@ -3,10 +3,9 @@ import { MOTION_FRAMES_PER_SECOND } from "../motion";
 import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 
 export const SCENE_SPAN_FRAMES = 680;
-// Authored anchors come from an idealized constant pace, not from the body's own velocity as the
-// showcase's 10-frame anchors do. Anchoring every 10 frames was seen to pin the root against its
-// natural gait sway; one anchor per second leaves that freedom.
-export const WAYPOINT_INTERVAL_FRAMES = 20;
+// The showcase places one goal waypoint three seconds ahead and leaves every frame between goals
+// to the text. Denser anchors on an idealized pace line hand the root branch the gait instead.
+export const WAYPOINT_INTERVAL_FRAMES = 3 * MOTION_FRAMES_PER_SECOND;
 
 const DEFAULT_PACE_METRES_PER_SECOND = 1.3;
 const PROMPT_PACE_METRES_PER_SECOND: Readonly<Record<string, number>> = {
