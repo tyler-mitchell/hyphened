@@ -1,13 +1,20 @@
 import tgpu, { d, std } from "typegpu";
 import {
+  Body,
+  BODY_FLAG_STATIC,
   capabilityResourceKey,
   defineGraphCapability,
   defineRenderStage,
   defineShaderFamily,
+  interpolateBodyPose,
   res,
+  rotateByQuat,
+  Shape,
   type SystemGraphCapability,
 } from "webgpu-engine";
 
+import { u32DivMod } from "../gpu";
+import { PHYSICS_ID, type MotionBodies } from "./bodies";
 import type { MotionCamera } from "./camera";
 import { motionViewBindings, MotionPoseSample, type MotionRenderProgram } from "../schema";
 import type { MotionPresentation } from "../motion/presentation";
@@ -136,8 +143,67 @@ const vertex = tgpu.vertexFn({
   };
 });
 
+const crateBindings = tgpu.bindGroupLayout({
+  bodies: { storage: d.arrayOf(Body), access: "readonly" },
+  previousBodies: { storage: d.arrayOf(Body), access: "readonly" },
+  shapes: { storage: d.arrayOf(Shape), access: "readonly" },
+});
+const BOX_VERTEX_COUNT = 36;
+// A unit cube as host tables: six faces of two triangles, one outward normal per face.
+const faceAxes = [0, 0, 1, 1, 2, 2] as const;
+const faceSigns = [1, -1, 1, -1, 1, -1] as const;
+const quadU = [-1, 1, 1, -1, 1, -1] as const;
+const quadV = [-1, -1, 1, -1, 1, 1] as const;
+const cubeCorners = tgpu.const(
+  d.arrayOf(d.vec3f, BOX_VERTEX_COUNT),
+  Array.from({ length: BOX_VERTEX_COUNT }, (_unused, vertexIndex) => {
+    const face = Math.floor(vertexIndex / 6);
+    const sign = faceSigns[face]!;
+    const u = quadU[vertexIndex % 6]! * sign;
+    const v = quadV[vertexIndex % 6]!;
+    const byAxis = [d.vec3f(sign, u, v), d.vec3f(v, sign, u), d.vec3f(u, v, sign)] as const;
+    return byAxis[faceAxes[face]!];
+  }),
+);
+const cubeNormals = tgpu.const(
+  d.arrayOf(d.vec3f, 6),
+  Array.from({ length: 6 }, (_unused, face) => {
+    const sign = faceSigns[face]!;
+    const byAxis = [d.vec3f(sign, 0, 0), d.vec3f(0, sign, 0), d.vec3f(0, 0, sign)] as const;
+    return byAxis[faceAxes[face]!];
+  }),
+);
+// Every physics pool row draws as one instanced box; static rows (the actor colliders and the
+// slab) degenerate to nothing, so only loose bodies are visible.
+const crateVertex = tgpu.vertexFn({
+  in: { instanceIndex: d.builtin.instanceIndex, vertexIndex: d.builtin.vertexIndex },
+  out: { normal: d.vec3f, position: d.builtin.position },
+})(({ instanceIndex, vertexIndex }) => {
+  "use gpu";
+  const body = crateBindings.$.bodies[instanceIndex];
+  const pose = interpolateBodyPose(body, crateBindings.$.previousBodies[instanceIndex], true);
+  const shape = crateBindings.$.shapes[body.shapeOffset];
+  const visual = std.select(d.f32(1), d.f32(0), (body.flags & d.u32(BODY_FLAG_STATIC)) !== 0);
+  const corner = cubeCorners.$[vertexIndex];
+  const scaled = d.vec3f(
+    corner.x * shape.halfExtents.x * visual,
+    corner.y * shape.halfExtents.y * visual,
+    corner.z * shape.halfExtents.z * visual,
+  );
+  const local = std.add(shape.localPosition, rotateByQuat(shape.localOrientation, scaled));
+  const world = std.add(pose.position, rotateByQuat(pose.orientation, local));
+  return {
+    normal: rotateByQuat(
+      pose.orientation,
+      rotateByQuat(shape.localOrientation, cubeNormals.$[u32DivMod(vertexIndex, d.u32(6)).x]),
+    ),
+    position: std.mul(motionViewBindings.$.view[d.u32(0)].viewProjection, d.vec4f(world, 1)),
+  };
+});
+
 /** Render the GPU-resident Actor palette with one immutable mesh and one instanced draw. */
 export const createMotionRenderer = (input: {
+  readonly bodies: MotionBodies;
   readonly phase: string;
   readonly camera: MotionCamera;
   readonly presentation: MotionPresentation;
@@ -231,11 +297,43 @@ export const createMotionRenderer = (input: {
       },
     },
   });
+  const crateFragment = tgpu.fragmentFn({ in: { normal: d.vec3f }, out: SceneColor })(
+    ({ normal }) => {
+      "use gpu";
+      const light = std.max(
+        std.dot(
+          std.normalize(normal),
+          std.normalize(motionViewBindings.$.view[d.u32(0)].lightDirection.xyz),
+        ),
+        d.f32(0),
+      );
+      const intensity =
+        d.f32(input.program.ambientIntensity) + light * d.f32(input.program.directionalIntensity);
+      const output = d.vec4f(0.82 * intensity, 0.42 * intensity, 0.16 * intensity, 1);
+      return { capture: output, presentation: output };
+    },
+  );
+  const crateFamily = defineShaderFamily({
+    id: "motion-crates",
+    variants: {
+      color: {
+        pipeline: {
+          depthStencil: { depthCompare: "less" as const, depthWriteEnabled: true },
+          fragment: crateFragment,
+          primitive: { cullMode: "back" as const },
+          vertex: crateVertex,
+        },
+      },
+    },
+  });
   return defineGraphCapability({
     id: MOTION_RENDERER_ID,
     needs: {
       depth: input.surface.attachment,
       paletteColumns: input.skin.columns,
+      physicsBodies: { capability: PHYSICS_ID, export: "bodies" },
+      physicsBodiesPrevious: { capability: PHYSICS_ID, export: "bodies", version: "previous" },
+      physicsShapes: { capability: PHYSICS_ID, export: "shapes" },
       samples: input.presentation.samples,
       view: input.camera.view,
     },
@@ -326,6 +424,22 @@ export const createMotionRenderer = (input: {
             draws: [{ instances: input.skin.actorCount, vertices: input.program.indices.length }],
             family: actorFamily,
             id: "actors",
+          },
+          {
+            bindGroups: [
+              { bindings: { view: "view" }, layout: motionViewBindings },
+              {
+                bindings: {
+                  bodies: "physicsBodies",
+                  previousBodies: "physicsBodiesPrevious",
+                  shapes: "physicsShapes",
+                },
+                layout: crateBindings,
+              },
+            ],
+            draws: [{ instances: input.bodies.bodyCount, vertices: BOX_VERTEX_COUNT }],
+            family: crateFamily,
+            id: "crates",
           },
         ],
         phase: input.phase,

@@ -2,6 +2,7 @@ import { defineTimeline } from "@coretime/core";
 
 import { MOTION_REQUEST_SCHEDULE, MOTION_SUBJECT_SCHEDULE } from "../motion";
 import { MOTION_DRIVER_POLICY, MOTION_FRAMES_PER_SECOND } from "../motion";
+import { PHYSICS_SUBSTEP_CLOCK, PHYSICS_SUBSTEPS_PER_FRAME } from "../schema";
 import {
   MOTION_ACTOR_EVENT,
   MOTION_PROMPT_EVENT,
@@ -14,6 +15,11 @@ export { MOTION_FRAMES_PER_SECOND };
 export const motionTimelineDeclaration = defineTimeline({
   clocks: {
     motionFrame: { kind: "integer", rate: MOTION_FRAMES_PER_SECOND },
+    [PHYSICS_SUBSTEP_CLOCK]: {
+      kind: "mapped",
+      rate: { denominator: 1, numerator: PHYSICS_SUBSTEPS_PER_FRAME },
+      reference: "motionFrame",
+    },
   },
   composition: {
     root: SCENE_COMPOSITION,

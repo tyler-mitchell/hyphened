@@ -25,6 +25,8 @@ import { SCENE_SPAN_FRAMES } from "../scene/default";
 import { compileMotionPipelineProgram } from "./compile";
 import { createMotionPipelineSystem } from "./system";
 
+const CRATE_ROUTE_TICK = 150;
+
 /** Acquire authored data and assets, then return one framework-owned production session. */
 export const openMotionProduction = async (input: {
   readonly presentation?: ScenePresentationConfigurationInput;
@@ -99,7 +101,22 @@ export const openMotionProduction = async (input: {
     render,
     rig: binding.value,
   });
+  // One crate per actor on its own route, at the first authored vertex after the walk-to-run
+  // boundary, so a running body meets it.
+  const crates = composition.actors.flatMap(({ rootTrack, worldOffset }) => {
+    const vertex = rootTrack.items.find(({ at }) => at.tick >= CRATE_ROUTE_TICK);
+    return vertex === undefined
+      ? []
+      : [
+          [
+            worldOffset[0] + vertex.data.position[0],
+            worldOffset[1],
+            worldOffset[2] + vertex.data.position[1],
+          ] as const,
+        ];
+  });
   const system = createMotionPipelineSystem({
+    crates,
     embeddings,
     manifest: provider.manifest,
     program,

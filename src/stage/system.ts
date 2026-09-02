@@ -14,6 +14,7 @@ import type { TextEmbedding } from "../provider/embedding";
 import { HISTORY_FRAME_CAPACITY } from "../provider/generation/layout";
 import { ARDY_MOTION_CONTACT_COUNT, createMotionProvider } from "../provider/system";
 import type { MotionPipelineProgram, MotionSubjectDefinition } from "../schema";
+import { createMotionBodies } from "./bodies";
 import { createMotionCamera, MOTION_CAMERA_COMMAND, MOTION_CAMERA_ID } from "./camera";
 import { createMotionRenderer, MOTION_CAPTURE_RESOURCE_KEY } from "./renderer";
 import { createSkinPalette } from "./skin";
@@ -30,6 +31,7 @@ const phase = {
   clock: "clock",
   subject: "subject",
   compile: "motion-compile",
+  body: "body",
   motion: "motion",
   camera: "camera",
   skin: "skin",
@@ -38,6 +40,8 @@ const phase = {
 
 /** Compose the real provider-to-pixel path as one WebGPU Engine capability graph. */
 export const createMotionPipelineSystem = (input: {
+  /** World placements of loose crates on the actors' routes. */
+  readonly crates: ReadonlyArray<readonly [number, number, number]>;
   readonly embeddings: ReadonlyArray<TextEmbedding>;
   readonly manifest: Parameters<typeof createMotionProvider>[0]["manifest"];
   readonly program: MotionPipelineProgram;
@@ -83,10 +87,23 @@ export const createMotionPipelineSystem = (input: {
     product: product.product,
     program: input.program.motion,
   });
+  const bodies = createMotionBodies({
+    clock: timelineClockReference(clock),
+    crates: input.crates,
+    ground: input.program.render.ground,
+    id: "motion-bodies",
+    phase: phase.body,
+    product: product.product,
+    program: input.program.motion,
+    subjects: input.subjects,
+  });
   const phases: Phase[] = [
     { id: phase.clock, moment: { at: "step" } },
     { id: phase.subject, moment: { at: "step" }, after: [phase.clock] },
     { id: phase.compile, moment: { at: "step" }, after: [phase.subject] },
+    // The provider publishes at the present moment; the step reads the retained product from the
+    // previous frame, which its resources declare as valid.
+    { id: phase.body, moment: { at: "step" }, after: [phase.compile] },
     { id: phase.motion, moment: { at: "present" }, after: [provider.publicationPhase] },
     { id: phase.camera, moment: { at: "present" }, after: [phase.motion] },
     { id: phase.skin, moment: { at: "present" }, after: [phase.motion] },
@@ -107,6 +124,7 @@ export const createMotionPipelineSystem = (input: {
     program: input.program.render,
   });
   const renderer = createMotionRenderer({
+    bodies,
     camera,
     phase: phase.render,
     presentation,
@@ -123,6 +141,7 @@ export const createMotionPipelineSystem = (input: {
       ...provider.capabilities,
       product.capability,
       presentation.capability,
+      ...bodies.capabilities,
       surface.capability,
       camera.capability,
       skin.capability,
