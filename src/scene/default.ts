@@ -8,9 +8,11 @@ export const SCENE_SPAN_FRAMES = 680;
 export const WAYPOINT_INTERVAL_FRAMES = 3 * MOTION_FRAMES_PER_SECOND;
 
 const DEFAULT_PACE_METRES_PER_SECOND = 1.3;
+// The released weights' training spread is 0.46 m/s per planar root-velocity axis and 1.44 m of
+// root travel within a window; a claimed pace far beyond that produces leaps, not running.
 const PROMPT_PACE_METRES_PER_SECOND: Readonly<Record<string, number>> = {
   "A person is kicking with their right leg.": 0,
-  "A person is running.": 4.2,
+  "A person is running.": 2.5,
   "A person is standing still.": 0,
   "A person is walking.": 1.3,
   "A person reaches forward with their right hand to press a button.": 0,
