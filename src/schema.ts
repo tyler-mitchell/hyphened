@@ -12,6 +12,9 @@ import {
 export const COMPUTE_WORKGROUP_SIZE = 256;
 export const DIFFUSION_WORKGROUP_SIZE = 64;
 export const MOTION_FRAMES_PER_SECOND = 20;
+/** The rigid-body solver substeps on a clock mapped from the motion frame. */
+export const PHYSICS_SUBSTEP_CLOCK = "physicsSubstep";
+export const PHYSICS_SUBSTEPS_PER_FRAME = 4;
 export const INITIAL_SUBJECT_COUNT = 2;
 export const INITIAL_PRODUCT_SEED = 2;
 export const ONE_MOTION_FRAME = { motionFrame: 1 } as const;
@@ -219,6 +222,8 @@ export const $ = type.module({
     "MotionRenderConfiguration",
     "&",
     {
+      /** Each joint's bind orientation as a unit quaternion; the skin palette rotates by it. */
+      bindRotations: "Vector4[] >= 1",
       camera: "MotionCameraProgram",
       frameCount: "number.integer > 0",
       indices: "(number.integer >= 0)[] >= 3",

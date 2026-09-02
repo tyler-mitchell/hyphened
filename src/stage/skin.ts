@@ -124,6 +124,12 @@ export const createSkinPalette = (input: {
       samples: input.presentation.samples,
     },
     resources: {
+      bindRotations: res.storageBuffer({
+        capacity: input.program.bindRotations.length,
+        initial: input.program.bindRotations.map((rotation) => d.vec4f(...rotation)),
+        lifetime: "persistent",
+        schema: d.vec4f,
+      }),
       inverseBindColumns: res.storageBuffer({
         capacity: input.program.inverseBindColumns.length,
         initial: input.program.inverseBindColumns.map((column) => d.vec4f(...column)),
@@ -160,6 +166,7 @@ export const createSkinPalette = (input: {
       const io = defineResourceBindings({
         id: `${input.id}/resources`,
         entries: {
+          bindRotations: resources.bindRotations,
           inverseBindColumns: resources.inverseBindColumns,
           paletteColumns: { resource: resources.paletteColumns, access: "write" },
           parentIndices: resources.parentIndices,
@@ -179,8 +186,10 @@ export const createSkinPalette = (input: {
               position: rootPosition,
               rotation: rootRotation,
             });
+            // The model's identity pose is the rig's bind pose, so a joint's skinning rotation is
+            // its posed rotation applied after its bind orientation: `[G R_bind, p] [Rᵀ, -Rᵀt]`.
             const rootSkin = skinColumns(
-              rootRotation,
+              multiplyQuaternions(rootRotation, io.$.bindRotations[d.u32(0)]),
               rootPosition,
               io.$.inverseBindColumns[d.u32(0)],
               io.$.inverseBindColumns[d.u32(1)],
@@ -212,7 +221,7 @@ export const createSkinPalette = (input: {
               });
               const inverseBase = joint * d.u32(4);
               const palette = skinColumns(
-                rotation,
+                multiplyQuaternions(rotation, io.$.bindRotations[joint]),
                 position,
                 io.$.inverseBindColumns[inverseBase],
                 io.$.inverseBindColumns[inverseBase + d.u32(1)],

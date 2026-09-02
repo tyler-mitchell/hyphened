@@ -52,6 +52,62 @@ export const compileMotionCameraProgram = (input: {
   });
 };
 
+/** The unit quaternion of a rotation matrix given row-major as `element(row, column)`. */
+const quaternionOfRotation = (
+  element: (row: number, column: number) => number,
+): [number, number, number, number] => {
+  const trace = element(0, 0) + element(1, 1) + element(2, 2);
+  const candidates: ReadonlyArray<() => [number, number, number, number]> = [
+    () => {
+      const scale = 2 * Math.sqrt(trace + 1);
+      return [
+        (element(2, 1) - element(1, 2)) / scale,
+        (element(0, 2) - element(2, 0)) / scale,
+        (element(1, 0) - element(0, 1)) / scale,
+        0.25 * scale,
+      ];
+    },
+    () => {
+      const scale = 2 * Math.sqrt(1 + element(0, 0) - element(1, 1) - element(2, 2));
+      return [
+        0.25 * scale,
+        (element(0, 1) + element(1, 0)) / scale,
+        (element(0, 2) + element(2, 0)) / scale,
+        (element(2, 1) - element(1, 2)) / scale,
+      ];
+    },
+    () => {
+      const scale = 2 * Math.sqrt(1 + element(1, 1) - element(0, 0) - element(2, 2));
+      return [
+        (element(0, 1) + element(1, 0)) / scale,
+        0.25 * scale,
+        (element(1, 2) + element(2, 1)) / scale,
+        (element(0, 2) - element(2, 0)) / scale,
+      ];
+    },
+    () => {
+      const scale = 2 * Math.sqrt(1 + element(2, 2) - element(0, 0) - element(1, 1));
+      return [
+        (element(0, 2) + element(2, 0)) / scale,
+        (element(1, 2) + element(2, 1)) / scale,
+        0.25 * scale,
+        (element(1, 0) - element(0, 1)) / scale,
+      ];
+    },
+  ];
+  const branch =
+    trace > 0
+      ? 0
+      : element(0, 0) > element(1, 1) && element(0, 0) > element(2, 2)
+        ? 1
+        : element(1, 1) > element(2, 2)
+          ? 2
+          : 3;
+  const [x, y, z, w] = candidates[branch]!();
+  const length = Math.hypot(x, y, z, w);
+  return [x / length, y / length, z / length, w / length];
+};
+
 /** Lower one exact Core Time composition revision and admitted rig into the GPU program. */
 export const compileMotionPipelineProgram = (input: {
   readonly artifact: { readonly id: string; readonly version: string };
@@ -111,6 +167,13 @@ export const compileMotionPipelineProgram = (input: {
   const renderConfiguration = input.render ?? MotionRenderConfiguration.assert({});
   const render = MotionRenderProgram.assert({
     ...renderConfiguration,
+    // The inverse bind transform is `[Rᵀ, -Rᵀt]` column-major; its transpose block is the bind
+    // orientation the model's identity pose corresponds to.
+    bindRotations: Array.from({ length: jointCount }, (_unused, joint) =>
+      quaternionOfRotation(
+        (row, column) => skin.inverseBindMatrices[joint * 16 + row * 4 + column]!,
+      ),
+    ),
     camera: compileMotionCameraProgram({ composition: input.composition }),
     frameCount,
     indices: [...skin.indices],
