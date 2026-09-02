@@ -12,14 +12,13 @@ import {
 export const COMPUTE_WORKGROUP_SIZE = 256;
 export const DIFFUSION_WORKGROUP_SIZE = 64;
 export const MOTION_GENERATION_CLOCK = "generationStep";
-export const MOTION_GENERATION_STEPS_PER_FRAME = 1;
+export const MOTION_GENERATION_STEPS_PER_FRAME = 2;
 export const MOTION_FRAMES_PER_SECOND = 20;
 export const INITIAL_SUBJECT_COUNT = 2;
-export const REFERENCE_FRAME_CAPACITY = 680;
-export const SUBJECT_PHASE_FRAMES = 17;
 export const INITIAL_PRODUCT_SEED = 2;
 export const MOTION_PRODUCT_ID = "motion";
 export const ONE_MOTION_FRAME = { motionFrame: 1 } as const;
+export const DEFAULT_TEMPORAL_SHEET_COLUMNS = 4;
 export const MOTION_DRIVER_POLICY = {
   maxStepsPerAdvance: 2,
   onStepLimitExceeded: "drop",
@@ -54,6 +53,11 @@ export const $ = type.module({
   },
   ActorGroup: {
     children: "ActorTrackChild[]",
+    data: {
+      label: "NonEmptyString",
+      row: "U32",
+      worldOffset: "ReadonlyVector3",
+    },
     id: "string >= 1",
     kind: "'group'",
   },
@@ -71,8 +75,7 @@ export const $ = type.module({
     startFrame: "number.integer >= 0",
   },
   ControlMotionInput: {
-    action:
-      "'addActor' | 'pause' | 'play' | 'removeActor' | 'restart' | 'seek' | 'setRate' | 'step'",
+    action: "'pause' | 'play' | 'restart' | 'seek' | 'setRate' | 'step'",
     "frame?": "number.integer >= 0",
     "rate?": "number > 0",
     "ticks?": "number.integer",
@@ -114,6 +117,7 @@ export const $ = type.module({
     rootTrack: "RootKeyframe[]",
     seed: "U32",
     sourceFrameStart: "U32",
+    state: "NonEmptyString",
     timelineFrameStart: "U32",
   },
   MotionCompilationProgram: {
@@ -171,8 +175,10 @@ export const $ = type.module({
   MotionRootTrack: { items: "RootTrackItem[]" },
   MotionSceneActor: {
     promptTrack: "MotionPromptTrack",
+    row: "U32",
     rootTrack: "MotionRootTrack",
     subject: "NonEmptyString",
+    worldOffset: "ReadonlyVector3",
   },
   MotionSceneComposition: {
     actors: "MotionSceneActor[] >= 1",
@@ -202,6 +208,9 @@ export const $ = type.module({
     frameCount: "number.integer > 0",
     rootTrack: "RootKeyframe[]",
     seed: "U32",
+  },
+  MotionCameraProgram: {
+    frames: "RenderCameraShot[] >= 1",
   },
   MotionReferenceAdoptionInput: {
     product: "NonEmptyString",
@@ -258,7 +267,7 @@ export const $ = type.module({
     "MotionRenderConfiguration",
     "&",
     {
-      camera: { frames: "RenderCameraShot[] >= 1" },
+      camera: "MotionCameraProgram",
       frameCount: "number.integer > 0",
       indices: "(number.integer >= 0)[] >= 3",
       inverseBindColumns: "Vector4[] >= 4",
@@ -271,6 +280,7 @@ export const $ = type.module({
   ],
   MotionRequest: {
     fulfillment: "'generation' | 'residency'",
+    "historyFrameStart?": "U32",
     id: "NonEmptyString",
     product: "MotionProductSpecification",
     productFrameStart: "U32",
@@ -592,6 +602,9 @@ export const MotionPresentationProgram = $.MotionPresentationInput.narrow(
   }))
   .to($.MotionPresentationProgram);
 export type MotionPresentationProgram = typeof MotionPresentationProgram.infer;
+
+export const MotionCameraProgram = $.MotionCameraProgram;
+export type MotionCameraProgram = typeof MotionCameraProgram.infer;
 
 export const MotionRenderProgram = $.MotionRenderProgram.narrow(
   (program, context) =>

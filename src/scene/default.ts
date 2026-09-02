@@ -48,16 +48,27 @@ const authoredZAt = (spans: readonly AuthoredPromptSpan[], frame: number): numbe
   return -travelled;
 };
 
-export const authoredRootConstraints = (): readonly AuthoredRootConstraint[] => {
+const authoredXAt = (input: { readonly frame: number; readonly row: number }): number =>
+  Math.fround(input.row * 4 * Math.sin((input.frame / (SCENE_SPAN_FRAMES - 1)) * Math.PI));
+
+export const authoredRootConstraints = (row: number): readonly AuthoredRootConstraint[] => {
   const spans = authoredPromptSpans();
   return Array.from(
     { length: Math.ceil((SCENE_SPAN_FRAMES - 1) / WAYPOINT_INTERVAL_FRAMES) },
     (_unused, waypoint) => {
       const tick = Math.min((waypoint + 1) * WAYPOINT_INTERVAL_FRAMES, SCENE_SPAN_FRAMES - 1);
+      const x = authoredXAt({ frame: tick, row });
+      const z = Math.fround(authoredZAt(spans, tick));
+      const headingFrom = tick === SCENE_SPAN_FRAMES - 1 ? tick - 1 : tick;
+      const headingTo = tick === SCENE_SPAN_FRAMES - 1 ? tick : tick + 1;
       return {
         constraint: {
-          headingRadians: Math.PI,
-          position: [0, Math.fround(authoredZAt(spans, tick))] as const,
+          headingRadians: Math.atan2(
+            authoredXAt({ frame: headingTo, row }) - authoredXAt({ frame: headingFrom, row }),
+            Math.fround(authoredZAt(spans, headingTo)) -
+              Math.fround(authoredZAt(spans, headingFrom)),
+          ),
+          position: [x, z] as const,
         },
         tick,
       };
@@ -65,8 +76,8 @@ export const authoredRootConstraints = (): readonly AuthoredRootConstraint[] => 
   );
 };
 
-export const authoredActor = (subject: string): AuthoredActor => ({
+export const authoredActor = (subject: string, row: number): AuthoredActor => ({
   prompts: authoredPromptSpans(),
-  roots: authoredRootConstraints(),
+  roots: authoredRootConstraints(row),
   subject,
 });

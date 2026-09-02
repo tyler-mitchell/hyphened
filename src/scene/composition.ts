@@ -14,6 +14,7 @@ import {
   ActorPresence,
   CameraItemData,
   DEFAULT_SCENE_PRESENTATION,
+  type MotionSubjectDefinition,
   PromptItemData,
   RootConstraint,
   type ScenePresentationConfiguration,
@@ -80,36 +81,40 @@ type SceneNode = TimelineNode<
   TimelineSeriesId<typeof motionTimelineDeclaration>,
   TimelineEventKind<typeof motionTimelineDeclaration>
 >;
-export const actorGroup = (subject: string): SceneNode => {
-  const authored = authoredActor(subject);
+export const actorGroup = (subject: MotionSubjectDefinition): SceneNode => {
+  const authored = authoredActor(subject.id, subject.row);
   const promptItems = authored.prompts.map((span) => {
     const data = PromptItemData.assert({ prompt: span.prompt });
     return {
       data,
-      id: promptItemId({ start: span.start, subject }),
+      id: promptItemId({ start: span.start, subject: subject.id }),
       range: {
         clock: "motionFrame" as const,
         duration: span.durationFrames,
         start: span.start,
       },
-      startEvent: { data, kind: MOTION_PROMPT_EVENT, subject },
+      startEvent: { data, kind: MOTION_PROMPT_EVENT, subject: subject.id },
     };
   });
   const rootItems = authored.roots.map(({ constraint, tick }) => ({
     at: { clock: "motionFrame" as const, tick },
     data: RootConstraint.assert(constraint),
-    id: `root-${String(tick)}/${subject}`,
+    id: `root-${String(tick)}/${subject.id}`,
   }));
   return {
     children: actorTrackEntries.map(([track, declared]): SceneNode => ({
       data: { label: declared.label, tone: declared.tone },
-      id: actorTrackId({ subject, track }),
+      id: actorTrackId({ subject: subject.id, track }),
       items: track === PROMPT_TRACK ? promptItems : rootItems,
       kind: "track" as const,
       overlap: declared.overlap,
     })),
-    data: { label: subject },
-    id: actorGroupId(subject),
+    data: {
+      label: subject.id,
+      row: subject.row,
+      worldOffset: subject.worldOffset,
+    },
+    id: actorGroupId(subject.id),
     kind: "group" as const,
   };
 };
@@ -197,8 +202,10 @@ const ActorGroupShape = $.ActorGroup.narrow((group, context) => {
 
 const MotionActorGroup = ActorGroupShape.pipe((group) => ({
   promptTrack: PromptTrack.assert(group.children[0]),
+  row: group.data.row,
   rootTrack: RootTrack.assert(group.children[1]),
   subject: actorSubject(group.id)!,
+  worldOffset: group.data.worldOffset,
 })).to($.MotionSceneActor);
 
 const contiguousFrameCount = (
@@ -222,10 +229,12 @@ export const SceneComposition = $.SceneCompositionInput.merge({
     const actors = composition.children.flatMap((node) => ("subject" in node ? [node] : []));
     const cameras = composition.children.flatMap((node) => ("subject" in node ? [] : [node]));
     const subjects = new Set(actors.map(({ subject }) => subject));
+    const rows = new Set(actors.map(({ row }) => row));
     const frameCount =
       cameras[0] === undefined ? undefined : contiguousFrameCount(cameras[0].items);
     return (
       (actors.length > 0 &&
+        rows.size === actors.length &&
         cameras.length === 1 &&
         frameCount !== undefined &&
         actors.every((actor) => contiguousFrameCount(actor.promptTrack.items) === frameCount) &&
