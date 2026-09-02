@@ -3,8 +3,8 @@ import { MOTION_FRAMES_PER_SECOND } from "../motion";
 import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 
 export const SCENE_SPAN_FRAMES = 680;
-// The showcase places one goal waypoint three seconds ahead and leaves every frame between goals
-// to the text. Denser anchors on an idealized pace line hand the root branch the gait instead.
+// Route vertices every three seconds. The provider interpolates the route between them and claims
+// its own goals relative to each generated window, so this spacing only shapes the path geometry.
 export const WAYPOINT_INTERVAL_FRAMES = 3 * MOTION_FRAMES_PER_SECOND;
 
 const DEFAULT_PACE_METRES_PER_SECOND = 1.3;
