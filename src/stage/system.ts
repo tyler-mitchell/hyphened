@@ -5,19 +5,10 @@ import {
   type Phase,
 } from "webgpu-engine";
 
-import {
-  createMotionProduct,
-  createMotionReferenceCandidate,
-  createMotionSubjectState,
-  MOTION_REQUEST_SCHEDULE,
-  MOTION_SUBJECT_SCHEDULE,
-  type MotionSubjectDefinition,
-} from "../motion";
-import { ARDY_MOTION_CONTACT_COUNT, createMotionProvider } from "../provider/system";
+import { createLearnedMotionCapability } from "../domains/learned-motion/capability";
 import type { TextEmbedding } from "../provider/embedding";
-import type { MotionPipelineProgram } from "../schema";
+import type { MotionPipelineProgram, MotionSubjectDefinition } from "../schema";
 import { createMotionCamera, MOTION_CAMERA_COMMAND, MOTION_CAMERA_ID } from "./camera";
-import { createProductMotionPresentation } from "./presentation";
 import { createMotionRenderer, MOTION_CAPTURE_RESOURCE_KEY } from "./renderer";
 import { createSkinPalette } from "./skin";
 import { createMotionSurface } from "./surface";
@@ -52,69 +43,39 @@ const phases: Phase[] = [
 /** Compose the real provider-to-pixel path as one WebGPU Engine capability graph. */
 export const createMotionPipelineSystem = (input: {
   readonly embeddings: ReadonlyArray<TextEmbedding>;
-  readonly manifest: Parameters<typeof createMotionProvider>[0]["manifest"];
+  readonly manifest: Parameters<typeof createLearnedMotionCapability>[0]["manifest"];
   readonly program: MotionPipelineProgram;
-  readonly restPose: Parameters<typeof createMotionProvider>[0]["restPose"];
+  readonly restPose: Parameters<typeof createLearnedMotionCapability>[0]["restPose"];
   readonly subjects: ReadonlyArray<MotionSubjectDefinition>;
 }) => {
   const clock = createTimelineClockCapability({ id: "motion-clock", phase: phase.clock });
-  const subjects = createMotionSubjectState({
-    id: "motion-subjects",
-    phase: phase.subject,
-    scheduleKind: MOTION_SUBJECT_SCHEDULE,
-    subjects: input.subjects,
-  });
-  const candidate = createMotionReferenceCandidate({
-    contactCount: ARDY_MOTION_CONTACT_COUNT,
-    frameCapacity: input.program.compilation.sourceFrameCount,
-    id: "motion-candidate",
-    jointCount: input.program.motion.jointCount,
-    phase: phase.compile,
-  });
-  const provider = createMotionProvider({
-    after: phase.compile,
-    candidate: candidate.candidate,
-    clock: "generationStep",
-    embeddings: input.embeddings,
-    id: "motion-provider",
-    manifest: input.manifest,
-    referenceFrameCapacity: input.program.compilation.sourceFrameCount,
-    requestScheduleKind: MOTION_REQUEST_SCHEDULE,
-    restPose: input.restPose,
-    subjectState: subjects.state,
-    subjects: input.subjects,
-  });
-  const product = createMotionProduct({
-    candidate: candidate.candidate,
-    id: "motion-product",
-    phase: provider.publicationPhase,
-    skeletonId: input.program.motion.skeleton,
-  });
-  const motion = createProductMotionPresentation({
+  const motion = createLearnedMotionCapability({
     clock: timelineClockReference(clock),
-    id: "motion-presentation",
-    phase: phase.motion,
-    product: product.product,
-    program: input.program.motion,
+    embeddings: input.embeddings,
+    manifest: input.manifest,
+    phases: { compile: phase.compile, presentation: phase.motion, subject: phase.subject },
+    program: input.program,
+    restPose: input.restPose,
+    subjects: input.subjects,
   });
   const surface = createMotionSurface({ id: "motion-surface" });
   const camera = createMotionCamera({
     clock: timelineClockReference(clock),
     phase: phase.camera,
-    presentation: motion,
+    presentation: motion.presentation,
     program: input.program.render,
     surface,
   });
   const skin = createSkinPalette({
     id: "skin-palette",
     phase: phase.skin,
-    presentation: motion,
+    presentation: motion.presentation,
     program: input.program.render,
   });
   const renderer = createMotionRenderer({
     camera,
     phase: phase.render,
-    presentation: motion,
+    presentation: motion.presentation,
     program: input.program.render,
     skin,
     surface,
@@ -123,11 +84,7 @@ export const createMotionPipelineSystem = (input: {
   return definePipelineSystem({
     capabilities: [
       clock,
-      subjects.capability,
-      candidate.capability,
-      ...provider.capabilities,
-      product.capability,
-      motion.capability,
+      ...motion.capabilities,
       surface.capability,
       camera.capability,
       skin.capability,
@@ -136,14 +93,10 @@ export const createMotionPipelineSystem = (input: {
     id: MOTION_PRODUCTION_ID,
     metadata: {
       camera,
-      candidate,
       clock,
-      motion,
-      product,
-      provider,
+      ...motion.metadata,
       renderer,
       skin,
-      subjects,
       surface,
     },
     phases,
