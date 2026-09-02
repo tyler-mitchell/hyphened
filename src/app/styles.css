@@ -1,0 +1,6 @@
+@import "@hyphened/ui/styles.css";
+/* Brings the timeline editor's utility classes and its default palette. The package owns its own
+   source scanning, so this stays a package specifier rather than a path into the workspace. */
+@import "@coretime/editor/styles.css";
+
+@source "./";

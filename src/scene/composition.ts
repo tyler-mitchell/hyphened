@@ -8,7 +8,7 @@ import type {
   TimelineSeriesId,
 } from "@coretime/core";
 
-import { MOTION_PROMPT_LIBRARY } from "../provider/prompt/embedding";
+import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 import {
   $,
   ActorPresence,

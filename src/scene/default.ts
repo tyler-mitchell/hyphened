@@ -1,6 +1,6 @@
 import type { AuthoredActor, AuthoredPromptSpan, AuthoredRootConstraint } from "../schema";
 import { MOTION_FRAMES_PER_SECOND } from "../motion";
-import { MOTION_PROMPT_LIBRARY } from "../provider/prompt/embedding";
+import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 
 export const SCENE_SPAN_FRAMES = 680;
 export const WAYPOINT_INTERVAL_FRAMES = 20;

@@ -63,7 +63,18 @@ export default {
     }),
     ...devtoolsPlugins,
     tailwindcss(),
-    ...(process.env.VITEST === "true" ? [] : [tanstackStart({ srcDirectory: "src" })]),
+    ...(process.env.VITEST === "true"
+      ? []
+      : [
+          tanstackStart({
+            router: {
+              entry: "app/router",
+              generatedRouteTree: "app/routeTree.gen.ts",
+              routesDirectory: "app/routes",
+            },
+            srcDirectory: "src",
+          }),
+        ]),
     viteReact(),
     ...(process.env.VITEST === "true" ? [] : [nitro()]),
   ],

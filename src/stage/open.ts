@@ -1,0 +1,130 @@
+import type { TimelineRuntime } from "@coretime/core";
+import type { WebGpuCanvasSession } from "webgpu-engine/react";
+
+import { loadHumanoidRigAssets } from "../rig/skin";
+import { bindMotionRig } from "../rig/binding";
+import { initialRequestFor, subjectAdmissionCommands } from "../motion/schedule";
+import { MOTION_FRAMES_PER_SECOND, motionTimelineDeclaration } from "../scene/timeline";
+import { loadMotionProvider } from "../provider/load";
+import { loadTextEmbedding, MOTION_PROMPT_LIBRARY } from "../provider/embedding";
+import {
+  actorGroup,
+  cameraTrack,
+  compositionRevision,
+  SCENE_COMPOSITION,
+  SceneComposition,
+} from "../scene/composition";
+import {
+  MotionRenderConfiguration,
+  type MotionRenderConfigurationInput,
+  INITIAL_SUBJECT_COUNT,
+  ScenePresentationConfiguration,
+  type ScenePresentationConfigurationInput,
+} from "../schema";
+import { SCENE_SPAN_FRAMES } from "../scene/default";
+import { compileMotionPipelineProgram } from "./compile";
+import { createMotionPipelineSystem } from "./system";
+
+/** Acquire authored data and assets, then return one framework-owned production session. */
+export const openMotionProduction = async (input: {
+  readonly presentation?: ScenePresentationConfigurationInput;
+  readonly render?: MotionRenderConfigurationInput;
+  readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
+}): Promise<WebGpuCanvasSession<typeof motionTimelineDeclaration>> => {
+  const [provider, rig, ...loadedEmbeddings] = await Promise.all([
+    loadMotionProvider(),
+    loadHumanoidRigAssets(),
+    ...MOTION_PROMPT_LIBRARY.map((source) => loadTextEmbedding({ source })),
+  ]);
+  if (provider.status === "unavailable") throw new Error(provider.reason);
+  const unavailableEmbedding = loadedEmbeddings.find(({ status }) => status === "unavailable");
+  if (unavailableEmbedding?.status === "unavailable") throw new Error(unavailableEmbedding.reason);
+  const embeddings = loadedEmbeddings.flatMap((loaded) =>
+    loaded.status === "available" ? [loaded.value] : [],
+  );
+  const binding = bindMotionRig({ motionSkeleton: provider.manifest.skeleton, rig });
+  if (binding.status === "unavailable") throw new Error(binding.reason);
+  if (provider.manifest.config.framesPerSecond !== MOTION_FRAMES_PER_SECOND) {
+    throw new Error("the motion provider and production timeline must use the same frame rate");
+  }
+
+  const presentation = ScenePresentationConfiguration.assert(input.presentation ?? {});
+  const render = MotionRenderConfiguration.assert(input.render ?? {});
+  const layout = presentation.actorLayout;
+  const subjects = Array.from({ length: INITIAL_SUBJECT_COUNT }, (_unused, row) => {
+    const column = row % layout.columns;
+    return {
+      id: `actor-${row + 1}`,
+      row,
+      worldOffset: [
+        layout.origin[0] + (column - (layout.columns - 1) / 2) * layout.columnSpacing,
+        layout.origin[1],
+        layout.origin[2] + Math.floor(row / layout.columns) * layout.rowSpacing,
+      ] as const,
+    };
+  });
+  await input.timeline.composition.initialize({
+    compositions: {
+      [SCENE_COMPOSITION]: {
+        children: [
+          cameraTrack({
+            durationFrames: SCENE_SPAN_FRAMES,
+            entities: subjects.map(({ id }) => id),
+            presentation: presentation.camera,
+          }),
+          ...subjects.map(actorGroup),
+        ],
+        clock: "motionFrame",
+      },
+    },
+    id: "ardy:scene:initialize",
+  });
+  const compositionReadout = await input.timeline.composition.read({
+    composition: SCENE_COMPOSITION,
+  });
+  const program = compileMotionPipelineProgram({
+    artifact: {
+      id: compositionReadout.id,
+      version: compositionRevision(compositionReadout.version),
+    },
+    composition: SceneComposition.assert(compositionReadout.composition),
+    framesPerSecond: MOTION_FRAMES_PER_SECOND,
+    render,
+    rig: binding.value,
+  });
+  const system = createMotionPipelineSystem({
+    embeddings,
+    manifest: provider.manifest,
+    program,
+    restPose: binding.value.motionRestPose,
+    subjects,
+  });
+
+  return {
+    requiredFeatures: ["shader-f16"],
+    system,
+    onOpen: async ({ engine, timeline }) => {
+      const parameters = await provider.loadParameters({
+        parameters: system.metadata.provider.parameters,
+        runtime: engine,
+      });
+      if (parameters.status === "unavailable") throw new Error(parameters.reason);
+      await timeline.scheduleCommands(
+        subjects.flatMap(({ id }) =>
+          subjectAdmissionCommands({
+            request: initialRequestFor({
+              actor: id,
+              fulfillment: "generation",
+              id: `initial-motion-${id}`,
+              program: program.compilation,
+              revision: 0,
+              subjectGeneration: 1,
+            }),
+          }),
+        ),
+      );
+      await timeline.transport.stepBy({ ticks: 1 });
+      await timeline.transport.play();
+    },
+  };
+};
