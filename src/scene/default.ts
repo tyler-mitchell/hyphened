@@ -1,4 +1,9 @@
-import type { AuthoredActor, AuthoredPromptSpan, AuthoredRootConstraint } from "../schema";
+import type {
+  AuthoredActor,
+  AuthoredPromptSpan,
+  AuthoredRootConstraint,
+  BodyItemData,
+} from "../schema";
 import { MOTION_FRAMES_PER_SECOND } from "../motion";
 import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 
@@ -155,6 +160,42 @@ export const authoredRootConstraints = (row: number): readonly AuthoredRootConst
   return ticks.map((tick) => {
     const [x, z] = pointAlongPath(path, distanceAt(spans, tick));
     return { constraint: { position: [Math.fround(x), Math.fround(z)] }, tick };
+  });
+};
+
+/**
+ * The bodies each actor's story asks for, each standing where the actor's route is at a frame
+ * into one of its prompt spans: a loose crate a second and a half into the first run, so a
+ * running actor meets it, and a fixed bar two and a half seconds into the duck span, past the
+ * first full window under that prompt and low enough that a standing actor must duck.
+ */
+const AUTHORED_BODIES: ReadonlyArray<{
+  readonly body: Omit<BodyItemData, "subject">;
+  readonly framesIn: number;
+  readonly prompt: string;
+}> = [
+  {
+    body: { elevation: 0.3, halfExtents: [0.3, 0.3, 0.3], label: "crate", mass: 4 },
+    framesIn: 30,
+    prompt: "A person is running.",
+  },
+  {
+    body: { elevation: 1.31, halfExtents: [1.2, 0.06, 0.06], label: "bar", mass: 0 },
+    framesIn: 50,
+    prompt: "Duck under obstacle and rise.",
+  },
+];
+
+export const authoredBodies = (
+  subject: string,
+  row: number,
+): ReadonlyArray<{ readonly data: BodyItemData; readonly tick: number }> => {
+  const spans = authoredPromptSpans(row);
+  return AUTHORED_BODIES.flatMap(({ body, framesIn, prompt }) => {
+    const span = spans.find((candidate) => candidate.prompt === prompt);
+    return span === undefined
+      ? []
+      : [{ data: { ...body, subject }, tick: span.start + framesIn }];
   });
 };
 

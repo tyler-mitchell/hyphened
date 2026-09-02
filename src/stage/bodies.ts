@@ -33,15 +33,10 @@ import {
 export const PHYSICS_ID = "physics";
 /** An upright box around the pelvis: the collider a moving body presents to loose objects. */
 const CHARACTER_HALF_EXTENTS = [0.22, 0.85, 0.22] as const;
-const CRATE_HALF_EXTENT = 0.3;
-const CRATE_MASS = 4;
 const SLAB_HALF_EXTENT = 200;
-/** A horizontal bar across the route, low enough that a standing body must duck under it. */
-const BEAM_HALF_EXTENTS = [1.2, 0.06, 0.06] as const;
-const BEAM_CLEARANCE = 1.25;
 
 export interface MotionBodies {
-  /** Pool rows, in order: one kinematic box per actor, the ground slab, the beams, the crates. */
+  /** Pool rows, in order: one kinematic box per actor, the ground slab, then the scene's bodies. */
   readonly bodyCount: number;
   readonly capabilities: ReadonlyArray<SystemGraphCapability>;
 }
@@ -49,13 +44,11 @@ export interface MotionBodies {
 /**
  * Tier one of motion and physics: each actor's learned pose drives a kinematic box that the solver
  * sees as a moving collider. The solver owns every contact and every dynamic response; the actor
- * owns only its trajectory. Crates are the first loose objects a body can push.
+ * owns only its trajectory. The scene's bodies stand around the actors.
  */
 export const createMotionBodies = (input: {
-  /** World placements of the bars the duck span passes under. */
-  readonly beams: ReadonlyArray<readonly [number, number, number]>;
+  readonly bodies: ReadonlyArray<PhysicsBodyInit>;
   readonly clock: SystemCapabilityExportReference<UniformResourceSpec<typeof TimelineClockUniform>>;
-  readonly crates: ReadonlyArray<readonly [number, number, number]>;
   readonly ground: { readonly height: number };
   readonly id: string;
   readonly phase: string;
@@ -65,8 +58,8 @@ export const createMotionBodies = (input: {
 }): MotionBodies => {
   const actorCount = input.subjects.length;
   // The actor colliders and the slab are hidden: the actor's visual is its skin and the slab's is
-  // the floor. Beams and crates draw from the body table.
-  const bodies: PhysicsBodyInit[] = [
+  // the floor. The scene's bodies draw from the body table.
+  const rows: PhysicsBodyInit[] = [
     ...input.subjects.map(({ worldOffset }) => ({
       halfExtents: CHARACTER_HALF_EXTENTS,
       hidden: true,
@@ -81,19 +74,11 @@ export const createMotionBodies = (input: {
       hidden: true,
       position: [0, input.ground.height - 0.5, 0],
     },
-    ...input.beams.map(([x, y, z]) => ({
-      halfExtents: BEAM_HALF_EXTENTS,
-      position: [x, y + BEAM_CLEARANCE + BEAM_HALF_EXTENTS[1], z] as const,
-    })),
-    ...input.crates.map(([x, y, z]) => ({
-      halfExtents: [CRATE_HALF_EXTENT, CRATE_HALF_EXTENT, CRATE_HALF_EXTENT] as const,
-      mass: CRATE_MASS,
-      position: [x, y + CRATE_HALF_EXTENT, z] as const,
-    })),
+    ...input.bodies,
   ];
   const physics = createPhysicsCapability({
     after: input.phase,
-    bodies,
+    bodies: rows,
     id: PHYSICS_ID,
     iterations: 4,
     kinematics: { capacity: actorCount, source: "device" },
@@ -212,5 +197,5 @@ export const createMotionBodies = (input: {
       };
     },
   });
-  return { bodyCount: bodies.length, capabilities: [producer, physics] };
+  return { bodyCount: rows.length, capabilities: [producer, physics] };
 };

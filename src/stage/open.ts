@@ -1,4 +1,5 @@
 import type { TimelineRuntime } from "@coretime/core";
+import type { PhysicsBodyInit } from "webgpu-engine";
 import type { WebGpuCanvasSession } from "webgpu-engine/react";
 
 import { loadHumanoidRigAssets } from "../rig/skin";
@@ -9,6 +10,7 @@ import { loadMotionProvider } from "../provider/load";
 import { loadTextEmbedding, MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 import {
   actorGroup,
+  bodyTrack,
   cameraTrack,
   compositionRevision,
   SCENE_COMPOSITION,
@@ -18,40 +20,31 @@ import {
   MotionRenderConfiguration,
   type MotionRenderConfigurationInput,
   INITIAL_SUBJECT_COUNT,
+  type MotionSceneComposition,
   ScenePresentationConfiguration,
   type ScenePresentationConfigurationInput,
 } from "../schema";
-import { SCENE_SPAN_FRAMES } from "../scene/default";
+import { authoredBodies, SCENE_SPAN_FRAMES } from "../scene/default";
 import { compileMotionPipelineProgram } from "./compile";
 import { createMotionPipelineSystem } from "./system";
 
-// Props are placed by the story: a crate a second and a half into each actor's first run, so a
-// running body meets it, and a bar two and a half seconds into its duck span, past the first
-// full window under that prompt.
-const PROP_PLACEMENTS = {
-  beams: { framesIn: 50, prompt: "Duck under obstacle and rise." },
-  crates: { framesIn: 30, prompt: "A person is running." },
-} as const;
-
-/** The world position of each actor's first route vertex after a frame into its first span of a prompt. */
-const routePointsAt = (
-  composition: SceneComposition,
-  placement: { readonly framesIn: number; readonly prompt: string },
-) =>
-  composition.actors.flatMap(({ promptTrack, rootTrack, worldOffset }) => {
-    const span = promptTrack.items.find(({ data }) => data.prompt === placement.prompt);
-    const vertex =
-      span === undefined
-        ? undefined
-        : rootTrack.items.find(({ at }) => at.tick >= span.range.start + placement.framesIn);
-    return vertex === undefined
+/** Lower the composition's bodies to physics rows: each stands on its actor's route at its frame. */
+const bodyRows = (composition: MotionSceneComposition): readonly PhysicsBodyInit[] =>
+  composition.bodies.flatMap((body) => {
+    const actor = composition.actors.find(({ subject }) => subject === body.subject);
+    const vertex = actor?.rootTrack.items.find(({ at }) => at.tick >= body.tick);
+    return actor === undefined || vertex === undefined
       ? []
       : [
-          [
-            worldOffset[0] + vertex.data.position[0],
-            worldOffset[1],
-            worldOffset[2] + vertex.data.position[1],
-          ] as const,
+          {
+            halfExtents: body.halfExtents,
+            mass: body.mass,
+            position: [
+              actor.worldOffset[0] + vertex.data.position[0],
+              actor.worldOffset[1] + body.elevation,
+              actor.worldOffset[2] + vertex.data.position[1],
+            ] as const,
+          },
         ];
   });
 
@@ -103,6 +96,7 @@ export const openMotionProduction = async (input: {
             presentation: presentation.camera,
           }),
           ...seeded.map(actorGroup),
+          bodyTrack(seeded.flatMap(({ id, row }) => authoredBodies(id, row))),
         ],
         clock: "motionFrame",
       },
@@ -130,10 +124,9 @@ export const openMotionProduction = async (input: {
     rig: binding.value,
   });
   const system = createMotionPipelineSystem({
-    beams: routePointsAt(composition, PROP_PLACEMENTS.beams),
-    crates: routePointsAt(composition, PROP_PLACEMENTS.crates),
     embeddings,
     manifest: provider.manifest,
+    bodies: bodyRows(composition),
     program,
     restPose: binding.value.motionRestPose,
     subjects,

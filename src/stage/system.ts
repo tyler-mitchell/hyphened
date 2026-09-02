@@ -3,6 +3,7 @@ import {
   definePipelineSystem,
   timelineClockReference,
   type Phase,
+  type PhysicsBodyInit,
 } from "webgpu-engine";
 
 import { createMotionCandidate } from "../motion/candidate";
@@ -40,10 +41,8 @@ const phase = {
 
 /** Compose the real provider-to-pixel path as one WebGPU Engine capability graph. */
 export const createMotionPipelineSystem = (input: {
-  /** World placements of the bars over the actors' routes at the duck span. */
-  readonly beams: ReadonlyArray<readonly [number, number, number]>;
-  /** World placements of loose crates on the actors' routes. */
-  readonly crates: ReadonlyArray<readonly [number, number, number]>;
+  /** The scene's placed bodies, lowered from the composition. */
+  readonly bodies: ReadonlyArray<PhysicsBodyInit>;
   readonly embeddings: ReadonlyArray<TextEmbedding>;
   readonly manifest: Parameters<typeof createMotionProvider>[0]["manifest"];
   readonly program: MotionPipelineProgram;
@@ -90,9 +89,8 @@ export const createMotionPipelineSystem = (input: {
     program: input.program.motion,
   });
   const bodies = createMotionBodies({
-    beams: input.beams,
+    bodies: input.bodies,
     clock: timelineClockReference(clock),
-    crates: input.crates,
     ground: input.program.render.ground,
     id: "motion-bodies",
     phase: phase.body,

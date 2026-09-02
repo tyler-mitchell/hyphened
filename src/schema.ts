@@ -173,6 +173,37 @@ export const $ = type.module({
     actors: "MotionSceneActor[] >= 1",
     cameraTrack: "TimelineCameraTrack",
     frameCount: "number.integer > 0",
+    bodies: "SceneBody[]",
+  },
+  /**
+   * A body as lowered from the composition: a box of a given mass standing on an actor's route
+   * at a frame, its centre `elevation` above the ground. Zero mass is a fixed body.
+   */
+  SceneBody: {
+    elevation: "number >= 0",
+    halfExtents: "ReadonlyVector3",
+    id: "NonEmptyString",
+    mass: "number >= 0",
+    subject: "NonEmptyString",
+    tick: "U32",
+  },
+  BodyItemData: {
+    elevation: "number >= 0",
+    halfExtents: "ReadonlyVector3",
+    label: "string >= 1",
+    mass: "number >= 0",
+    subject: "NonEmptyString",
+  },
+  BodyTrackItem: {
+    at: { clock: "'motionFrame'", tick: "U32" },
+    data: "BodyItemData",
+    id: "string >= 1",
+  },
+  TimelineBodyTrack: {
+    id: "'bodies'",
+    items: "BodyTrackItem[]",
+    kind: "'track'",
+    overlap: "'allow'",
   },
   MotionPoseSampleRow: {
     padding: "tgpu.vec3u",
@@ -751,6 +782,8 @@ export const CameraItemData = $.CameraItemData.narrow(
 export type CameraItemData = typeof CameraItemData.infer;
 export const PromptItemData = $.PromptItemData;
 export type PromptItemData = typeof PromptItemData.infer;
+export const BodyItemData = $.BodyItemData;
+export type BodyItemData = typeof BodyItemData.infer;
 export type MotionSceneComposition = typeof $.MotionSceneComposition.infer;
 
 export const DEFAULT_SCENE_PRESENTATION = ScenePresentationConfiguration.assert({});

@@ -15,6 +15,7 @@ import {
   CameraItemData,
   DEFAULT_SCENE_PRESENTATION,
   type MotionSubjectDefinition,
+  BodyItemData,
   PromptItemData,
   RootConstraint,
   type ScenePresentationConfiguration,
@@ -41,6 +42,7 @@ export const actorTrackId = (input: { readonly subject: string; readonly track: 
 const actorTrackKind = (trackId: string) => trackId.split("/")[0] ?? trackId;
 
 export const CAMERA_TRACK = "camera";
+export const BODY_TRACK = "bodies";
 
 export const ACTOR_TRACKS = {
   prompts: {
@@ -119,6 +121,25 @@ export const actorGroup = (subject: MotionSubjectDefinition): SceneNode => {
     kind: "group" as const,
   };
 };
+
+/**
+ * The body track: one entity per body placed in the world. Its components are its shape and
+ * mass and where it stands (an actor's route at the item's frame, at an elevation). Lowering
+ * resolves each into a physics row.
+ */
+export const bodyTrack = (
+  bodies: ReadonlyArray<{ readonly data: BodyItemData; readonly tick: number }>,
+): SceneNode => ({
+  data: { label: "Bodies" },
+  id: BODY_TRACK,
+  items: bodies.map(({ data, tick }) => ({
+    at: { clock: "motionFrame" as const, tick },
+    data: BodyItemData.assert(data),
+    id: `${data.label}-${String(tick)}/${data.subject}`,
+  })),
+  kind: "track",
+  overlap: "allow",
+});
 
 /** Frames before the earliest span of a prompt across the seeded actors, or none when no actor has it. */
 const framesBeforePrompt = (input: {
@@ -208,6 +229,8 @@ const CameraTrack = $.TimelineCameraTrack.merge({
   items: $.TimelineCameraTrackItem.merge({ data: CameraItemData }).array(),
 });
 
+const BodyTrack = $.TimelineBodyTrack;
+
 const ActorGroupShape = $.ActorGroup.narrow((group, context) => {
   const subject = actorSubject(group.id);
   if (subject === undefined) return context.mustBe("an actor group");
@@ -240,12 +263,24 @@ const contiguousFrameCount = (
     : undefined;
 };
 
+type SceneChild =
+  | typeof MotionActorGroup.infer
+  | typeof CameraTrack.infer
+  | typeof BodyTrack.infer;
+const sceneActors = (children: readonly SceneChild[]) =>
+  children.flatMap((node) => ("subject" in node ? [node] : []));
+const sceneCameras = (children: readonly SceneChild[]) =>
+  children.flatMap((node) => ("id" in node && node.id === CAMERA_TRACK ? [node] : []));
+const sceneBodies = (children: readonly SceneChild[]) =>
+  children.flatMap((node) => ("id" in node && node.id === BODY_TRACK ? [node] : []));
+
 export const SceneComposition = $.SceneCompositionInput.merge({
-  children: MotionActorGroup.or(CameraTrack).array(),
+  children: MotionActorGroup.or(CameraTrack).or(BodyTrack).array(),
 })
   .narrow((composition, context) => {
-    const actors = composition.children.flatMap((node) => ("subject" in node ? [node] : []));
-    const cameras = composition.children.flatMap((node) => ("subject" in node ? [] : [node]));
+    const actors = sceneActors(composition.children);
+    const cameras = sceneCameras(composition.children);
+    const bodies = sceneBodies(composition.children);
     const subjects = new Set(actors.map(({ subject }) => subject));
     const rows = new Set(actors.map(({ row }) => row));
     const frameCount =
@@ -254,25 +289,37 @@ export const SceneComposition = $.SceneCompositionInput.merge({
       (actors.length > 0 &&
         rows.size === actors.length &&
         cameras.length === 1 &&
+        bodies.length <= 1 &&
         frameCount !== undefined &&
         actors.every((actor) => contiguousFrameCount(actor.promptTrack.items) === frameCount) &&
         cameras[0]!.items.every(
           ({ data }) =>
             data.target.kind !== "entities" ||
             data.target.entities.every((subject) => subjects.has(subject)),
-        )) ||
-      context.mustBe("one camera track targeting at least one declared actor group")
+        ) &&
+        bodies.every((track) => track.items.every(({ data }) => subjects.has(data.subject)))) ||
+      context.mustBe(
+        "one camera track and at most one body track, each targeting declared actor groups",
+      )
     );
   })
   .pipe((composition) => {
-    const actors = composition.children.flatMap((node) => ("subject" in node ? [node] : []));
-    const cameraTrack = composition.children.flatMap((node) =>
-      "subject" in node ? [] : [node],
-    )[0]!;
+    const actors = sceneActors(composition.children);
+    const cameraTrack = sceneCameras(composition.children)[0]!;
     return {
       actors,
       cameraTrack,
       frameCount: contiguousFrameCount(cameraTrack.items)!,
+      bodies: sceneBodies(composition.children).flatMap((track) =>
+        track.items.map(({ at, data, id }) => ({
+          elevation: data.elevation,
+          halfExtents: data.halfExtents,
+          id,
+          mass: data.mass,
+          subject: data.subject,
+          tick: at.tick,
+        })),
+      ),
     };
   })
   .to($.MotionSceneComposition);
