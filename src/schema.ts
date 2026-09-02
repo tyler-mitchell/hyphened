@@ -389,6 +389,7 @@ export const $ = type.module({
     actorLayout: "ActorLayout",
     camera: "ScenePresentationCamera",
   },
+  SceneReadinessInput: {},
   SceneWindowInput: {
     durationFrames: "1 <= number.integer <= 100000",
     startFrame: "number.integer >= 0",
@@ -757,6 +758,7 @@ export const EditSceneCompositionInput = $.EditSceneCompositionInput;
 export const ReadSceneCompositionInput = $.ReadSceneCompositionInput;
 export const SceneAtInput = $.SceneAtInput;
 export const SceneHistoryInput = $.SceneHistoryInput;
+export const SceneReadinessInput = $.SceneReadinessInput;
 export const SceneWindowInput = $.SceneWindowInput;
 export const MotionTemporalSheetInput = $.MotionTemporalSheetInput;
 
