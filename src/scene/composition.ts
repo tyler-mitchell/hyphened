@@ -37,7 +37,7 @@ export const actorSubject = (groupId: string): string | undefined =>
   groupId.startsWith("actor/") ? groupId.slice("actor/".length) : undefined;
 export const actorTrackId = (input: { readonly subject: string; readonly track: string }) =>
   `${input.track}/${input.subject}`;
-export const actorTrackKind = (trackId: string) => trackId.split("/")[0] ?? trackId;
+const actorTrackKind = (trackId: string) => trackId.split("/")[0] ?? trackId;
 
 export const CAMERA_TRACK = "camera";
 
@@ -58,13 +58,13 @@ export const ACTOR_TRACKS = {
   },
 } as const;
 
-export type ActorTrackId = keyof typeof ACTOR_TRACKS;
-export type ActorTrack = (typeof ACTOR_TRACKS)[ActorTrackId];
+type ActorTrackId = keyof typeof ACTOR_TRACKS;
+type ActorTrack = (typeof ACTOR_TRACKS)[ActorTrackId];
 
 export const PROMPT_TRACK = "prompts" satisfies ActorTrackId;
 export const ROOT_TRACK = "root" satisfies ActorTrackId;
 
-export const actorTrackEntries = Object.entries(ACTOR_TRACKS) as ReadonlyArray<
+const actorTrackEntries = Object.entries(ACTOR_TRACKS) as ReadonlyArray<
   readonly [ActorTrackId, ActorTrack]
 >;
 
@@ -73,7 +73,7 @@ export const actorTrack = (trackId: string): ActorTrack | undefined => {
   return Object.hasOwn(ACTOR_TRACKS, kind) ? ACTOR_TRACKS[kind as ActorTrackId] : undefined;
 };
 
-export const promptItemId = (input: { readonly start: number; readonly subject: string }) =>
+const promptItemId = (input: { readonly start: number; readonly subject: string }) =>
   `prompt-${String(input.start)}/${input.subject}`;
 
 type SceneNode = TimelineNode<
