@@ -30,16 +30,6 @@ const phase = {
   render: "render",
 } as const;
 
-const phases: Phase[] = [
-  { id: phase.clock, moment: { at: "step" } },
-  { id: phase.subject, moment: { at: "step" }, after: [phase.clock] },
-  { id: phase.compile, moment: { at: "step" }, after: [phase.subject] },
-  { id: phase.motion, moment: { at: "present" } },
-  { id: phase.camera, moment: { at: "present" }, after: [phase.motion] },
-  { id: phase.skin, moment: { at: "present" }, after: [phase.motion] },
-  { id: phase.render, moment: { at: "present" }, after: [phase.camera, phase.skin] },
-];
-
 /** Compose the real provider-to-pixel path as one WebGPU Engine capability graph. */
 export const createMotionPipelineSystem = (input: {
   readonly embeddings: ReadonlyArray<TextEmbedding>;
@@ -58,6 +48,19 @@ export const createMotionPipelineSystem = (input: {
     restPose: input.restPose,
     subjects: input.subjects,
   });
+  const phases: Phase[] = [
+    { id: phase.clock, moment: { at: "step" } },
+    { id: phase.subject, moment: { at: "step" }, after: [phase.clock] },
+    { id: phase.compile, moment: { at: "step" }, after: [phase.subject] },
+    {
+      id: phase.motion,
+      moment: { at: "present" },
+      after: [motion.metadata.provider.publicationPhase],
+    },
+    { id: phase.camera, moment: { at: "present" }, after: [phase.motion] },
+    { id: phase.skin, moment: { at: "present" }, after: [phase.motion] },
+    { id: phase.render, moment: { at: "present" }, after: [phase.camera, phase.skin] },
+  ];
   const surface = createMotionSurface({ id: "motion-surface" });
   const camera = createMotionCamera({
     clock: timelineClockReference(clock),

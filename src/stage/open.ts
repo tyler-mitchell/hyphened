@@ -114,7 +114,6 @@ export const openMotionProduction = async (input: {
           subjectAdmissionCommands({
             request: initialRequestFor({
               actor: id,
-              fulfillment: "generation",
               id: `initial-motion-${id}`,
               program: program.compilation,
               revision: 0,

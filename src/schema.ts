@@ -11,12 +11,9 @@ import {
 
 export const COMPUTE_WORKGROUP_SIZE = 256;
 export const DIFFUSION_WORKGROUP_SIZE = 64;
-export const MOTION_GENERATION_CLOCK = "generationStep";
-export const MOTION_GENERATION_STEPS_PER_FRAME = 2;
 export const MOTION_FRAMES_PER_SECOND = 20;
 export const INITIAL_SUBJECT_COUNT = 2;
 export const INITIAL_PRODUCT_SEED = 2;
-export const MOTION_PRODUCT_ID = "motion";
 export const ONE_MOTION_FRAME = { motionFrame: 1 } as const;
 export const DEFAULT_TEMPORAL_SHEET_COLUMNS = 4;
 export const MOTION_DRIVER_POLICY = {
@@ -45,12 +42,6 @@ export const $ = type.module({
     start: "U32",
   },
   AuthoredRootConstraint: { constraint: "RootConstraint", tick: "U32" },
-  AuthoredSubjectState: {
-    generation: "U32",
-    id: "NonEmptyString",
-    present: "boolean",
-    "request?": "MotionRequest",
-  },
   ActorGroup: {
     children: "ActorTrackChild[]",
     data: {
@@ -126,12 +117,10 @@ export const $ = type.module({
     framesPerSecond: "number > 0",
     sourceFrameCount: "number.integer > 0",
   },
-  MotionBodyEndEffectorName: "'LeftFoot' | 'LeftHand' | 'RightFoot' | 'RightHand'",
   MotionEndEffectorJointGroup: {
     positionJointIndices: type("(number.integer >= 0)[]").readonly(),
     rotationJointIndices: type("(number.integer >= 0)[]").readonly(),
   },
-  MotionEndEffectorName: "'Hips' | 'LeftFoot' | 'LeftHand' | 'RightFoot' | 'RightHand'",
   MotionModelConfig: {
     baseDiffusionSteps: "number.integer > 0",
     framesPerSecond: "number.integer > 0",
@@ -151,8 +140,6 @@ export const $ = type.module({
     localRootStandardDeviation: "TypedArray.Float32",
     postQuantizationMean: "TypedArray.Float32",
     postQuantizationStandardDeviation: "TypedArray.Float32",
-    preQuantizationMean: "TypedArray.Float32",
-    preQuantizationStandardDeviation: "TypedArray.Float32",
   },
   MotionPresentationInput: {
     actors: { "[string >= 1]": "MotionActorBinding" },
@@ -191,51 +178,17 @@ export const $ = type.module({
     rootPosition: "tgpu.vec4f",
     rotation: "tgpu.vec4f",
   },
-  MotionProductSegment: {
-    artifact: "MotionReferenceArtifactDescriptor",
-    frameCount: "U32",
-    frameStart: "U32",
-  },
-  MotionProductManifest: {
-    format: '"motion-product"',
-    frameCount: "U32",
-    segments: "MotionProductSegment[] >= 1",
-    skeletonId: "NonEmptyString",
-    version: "1",
-  },
+  MotionConditioningKeyframe: { frame: "U32", identity: "NonEmptyString" },
   MotionProductSpecification: {
-    conditioning: { identity: "NonEmptyString" },
+    conditioning: "MotionConditioningKeyframe[] >= 1",
     frameCount: "number.integer > 0",
+    /** Facing at frame 0 in radians; 0 faces +z. Route keyframes constrain position only. */
+    initialHeadingRadians: "Finite",
     rootTrack: "RootKeyframe[]",
     seed: "U32",
   },
   MotionCameraProgram: {
     frames: "RenderCameraShot[] >= 1",
-  },
-  MotionReferenceAdoptionInput: {
-    product: "NonEmptyString",
-    referenceRevision: "U32",
-    sourceFrameStart: "U32",
-    subject: "NonEmptyString",
-    subjectGeneration: "U32",
-  },
-  MotionReferenceArtifact: {
-    contactCount: "U32",
-    contacts: "U32[]",
-    format: '"motion-reference"',
-    frameCount: "U32",
-    jointCount: "U32",
-    localRotationMatrices: "Finite[]",
-    motionChannelCount: "U32",
-    normalizedMotion: "Finite[]",
-    rootPositions: "Finite[]",
-    skeletonId: "NonEmptyString",
-    version: "2",
-  },
-  MotionReferenceArtifactDescriptor: {
-    digest: "NonEmptyString",
-    path: "NonEmptyString",
-    size: "SafeSize",
   },
   MotionRenderConfiguration: {
     actorColors: [
@@ -279,8 +232,6 @@ export const $ = type.module({
     },
   ],
   MotionRequest: {
-    fulfillment: "'generation' | 'residency'",
-    "historyFrameStart?": "U32",
     id: "NonEmptyString",
     product: "MotionProductSpecification",
     productFrameStart: "U32",
@@ -288,11 +239,6 @@ export const $ = type.module({
     state: "NonEmptyString",
     subject: "NonEmptyString",
     subjectGeneration: "U32",
-  },
-  MotionSceneInspectionInput: {
-    "include?": { "[string]": "boolean" },
-    motionStateFactLimit: "1 <= number.integer <= 100 = 10",
-    "subject?": "string >= 1",
   },
   MotionSubjectStateInput: { active: "boolean", generation: "U32", subject: "NonEmptyString" },
   MotionSubjectDefinition: {
@@ -338,7 +284,6 @@ export const $ = type.module({
   },
   NonEmptyString: type("string.trim").to("string >= 1"),
   PerspectiveProjection: ["CameraProjection", "&", { kind: "'perspective'" }],
-  PoseContinuityInput: { samples: "20 <= number.integer <= 240 = 90" },
   PromptItemData: { prompt: "string >= 1" },
   PromptSpan: {
     data: "PromptItemData",
@@ -350,7 +295,6 @@ export const $ = type.module({
       subject: "string >= 1",
     },
   },
-  PromptTrack: { items: "PromptSpan[]" },
   ReadSceneCompositionInput: { "composition?": "string >= 1" },
   ReadonlyVector3: type(["number", "number", "number"])
     .narrow((value) => value.every(Number.isFinite))
@@ -379,7 +323,7 @@ export const $ = type.module({
     yaw: "Finite",
   },
   RenderCameraShot: "RenderOrbitCameraShot | RenderLookCameraShot",
-  RootConstraint: { "headingRadians?": "Finite", position: ["Finite", "Finite"] },
+  RootConstraint: { position: ["Finite", "Finite"] },
   RootKeyframe: ["RootConstraint", "&", { frame: "U32" }],
   RootTrackItem: {
     at: { clock: "'motionFrame'", tick: "number.integer >= 0" },
@@ -388,7 +332,6 @@ export const $ = type.module({
   RootTrack: {
     items: "RootTrackItem[]",
   },
-  SafeSize: type("number.integer >= 0").narrow(Number.isSafeInteger),
   SceneAtInput: { frame: "number.integer >= 0" },
   SceneCameraEntityTarget: { kind: "'entities'", offset: "Vector3" },
   SceneCameraTarget: "SceneCameraEntityTarget | CameraPointTarget",
@@ -635,18 +578,23 @@ export const AuthoredActor = $.AuthoredActor.merge({
   roots: AuthoredRootConstraint.array().readonly(),
 }).readonly();
 export type AuthoredActor = typeof AuthoredActor.infer;
-export type AuthoredSubjectState = typeof $.AuthoredSubjectState.infer;
 
 export const RootKeyframe = $.RootKeyframe;
 export type RootKeyframe = typeof RootKeyframe.infer;
 
 /** Immutable authored content from which a provider constructs one shareable motion product. */
 export const MotionProductSpecification = $.MotionProductSpecification.narrow(
-  ({ frameCount, rootTrack }) =>
-    rootTrack.every(
+  ({ conditioning, frameCount, rootTrack }, context) =>
+    (rootTrack.every(
       ({ frame }, index) =>
         frame < frameCount && (index === 0 || frame > rootTrack[index - 1]!.frame),
-    ),
+    ) &&
+      conditioning[0]!.frame === 0 &&
+      conditioning.every(
+        ({ frame }, index) =>
+          frame < frameCount && (index === 0 || frame > conditioning[index - 1]!.frame),
+      )) ||
+    context.mustBe("ascending root keyframes and conditioning keyframes from frame 0"),
 );
 export type MotionProductSpecification = typeof MotionProductSpecification.infer;
 
@@ -654,18 +602,8 @@ export type MotionProductSpecification = typeof MotionProductSpecification.infer
 export const MotionRequest = $.MotionRequest.merge({ product: MotionProductSpecification });
 export type MotionRequest = typeof MotionRequest.infer;
 
-/** Durable instruction selecting one immutable motion product for an authoritative reference. */
-export const MotionReferenceAdoptionInput = $.MotionReferenceAdoptionInput;
-export type MotionReferenceAdoptionInput = typeof MotionReferenceAdoptionInput.infer;
-
 export const MotionSubjectStateInput = $.MotionSubjectStateInput;
 export type MotionSubjectDefinition = typeof $.MotionSubjectDefinition.infer;
-
-export const MotionEndEffectorName = $.MotionEndEffectorName;
-export type MotionEndEffectorName = typeof MotionEndEffectorName.infer;
-export const MotionBodyEndEffectorName = $.MotionBodyEndEffectorName;
-export type MotionBodyEndEffectorName = typeof MotionBodyEndEffectorName.infer;
-export type MotionEndEffectorJointGroup = typeof $.MotionEndEffectorJointGroup.infer;
 
 export const MotionSkeletonDefinition = $.MotionSkeletonDefinition.narrow((skeleton, context) => {
   const jointIndices = [
@@ -723,8 +661,6 @@ export const MotionModelSource = $.MotionModelSource.merge({
       motionStd: `${artifactRoot}/motion-std`,
       postQuantizationMean: `${artifactRoot}/post-quantization-mean`,
       postQuantizationStd: `${artifactRoot}/post-quantization-std`,
-      preQuantizationMean: `${artifactRoot}/pre-quantization-mean`,
-      preQuantizationStd: `${artifactRoot}/pre-quantization-std`,
     },
     tokenizer: `${artifactRoot}/tokenizer`,
   };
@@ -733,41 +669,6 @@ export type MotionModelSource = typeof MotionModelSource.infer;
 
 export const MotionStatistics = $.MotionStatistics.readonly();
 export type MotionStatistics = typeof MotionStatistics.infer;
-
-export const MotionReferenceArtifactDescriptor = $.MotionReferenceArtifactDescriptor;
-export type MotionReferenceArtifactDescriptor = typeof MotionReferenceArtifactDescriptor.infer;
-
-export const MotionReferenceArtifact = $.MotionReferenceArtifact.narrow(
-  (artifact, context) =>
-    (artifact.frameCount > 0 &&
-      artifact.contactCount > 0 &&
-      artifact.jointCount > 0 &&
-      artifact.contacts.length === artifact.frameCount * artifact.contactCount &&
-      artifact.localRotationMatrices.length === artifact.frameCount * artifact.jointCount * 9 &&
-      artifact.motionChannelCount > 0 &&
-      artifact.normalizedMotion.length === artifact.frameCount * artifact.motionChannelCount &&
-      artifact.rootPositions.length === artifact.frameCount * 3) ||
-    context.mustBe(
-      "complete contact, local-rotation, normalized-motion, and root rows for every candidate frame",
-    ),
-);
-export type MotionReferenceArtifact = typeof MotionReferenceArtifact.infer;
-
-/** Ordered immutable motion content produced once and adoptable by any compatible subject. */
-export const MotionProductManifest = $.MotionProductManifest.narrow(
-  (manifest, context) =>
-    (manifest.segments[0]?.frameStart === 0 &&
-      manifest.segments.every(
-        (segment, index) =>
-          index === 0 ||
-          segment.frameStart ===
-            manifest.segments[index - 1]!.frameStart + manifest.segments[index - 1]!.frameCount,
-      ) &&
-      manifest.segments.at(-1)!.frameStart + manifest.segments.at(-1)!.frameCount ===
-        manifest.frameCount) ||
-    context.mustBe("contiguous motion product segments covering the complete frame extent"),
-);
-export type MotionProductManifest = typeof MotionProductManifest.infer;
 
 /** Immutable provider jobs derived from one exact authored composition revision. */
 export const MotionCompilationProgram = $.MotionCompilationProgram.narrow(
@@ -861,8 +762,6 @@ export const SetCameraTimelineItemInput = $.CameraTimelineItemInput;
 export const RemoveCameraTimelineItemInput = $.RemoveCameraTimelineItemInput;
 export const ControlMotionInput = $.ControlMotionInput;
 export const EditSceneCompositionInput = $.EditSceneCompositionInput;
-export const MotionSceneInspectionInput = $.MotionSceneInspectionInput;
-export const PoseContinuityInput = $.PoseContinuityInput;
 export const ReadSceneCompositionInput = $.ReadSceneCompositionInput;
 export const SceneAtInput = $.SceneAtInput;
 export const SceneHistoryInput = $.SceneHistoryInput;

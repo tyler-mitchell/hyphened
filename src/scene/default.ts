@@ -3,6 +3,9 @@ import { MOTION_FRAMES_PER_SECOND } from "../motion";
 import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 
 export const SCENE_SPAN_FRAMES = 680;
+// Authored anchors come from an idealized constant pace, not from the body's own velocity as the
+// showcase's 10-frame anchors do. Anchoring every 10 frames was seen to pin the root against its
+// natural gait sway; one anchor per second leaves that freedom.
 export const WAYPOINT_INTERVAL_FRAMES = 20;
 
 const DEFAULT_PACE_METRES_PER_SECOND = 1.3;
@@ -20,8 +23,8 @@ const AUTHORED_SCENARIO: ReadonlyArray<{ readonly frames: number; readonly promp
   { frames: 120, prompt: "A person is walking." },
   { frames: 200, prompt: "A person is running." },
   { frames: 80, prompt: "Duck under obstacle and rise." },
-  { frames: 140, prompt: "A person is running." },
-  { frames: 140, prompt: "A person is standing still." },
+  { frames: 120, prompt: "A person is running." },
+  { frames: 160, prompt: "A person is standing still." },
 ];
 
 export const authoredPromptSpans = (): readonly AuthoredPromptSpan[] => {
@@ -53,27 +56,17 @@ const authoredXAt = (input: { readonly frame: number; readonly row: number }): n
 
 export const authoredRootConstraints = (row: number): readonly AuthoredRootConstraint[] => {
   const spans = authoredPromptSpans();
-  return Array.from(
+  const ticks = Array.from(
     { length: Math.ceil((SCENE_SPAN_FRAMES - 1) / WAYPOINT_INTERVAL_FRAMES) },
-    (_unused, waypoint) => {
-      const tick = Math.min((waypoint + 1) * WAYPOINT_INTERVAL_FRAMES, SCENE_SPAN_FRAMES - 1);
-      const x = authoredXAt({ frame: tick, row });
-      const z = Math.fround(authoredZAt(spans, tick));
-      const headingFrom = tick === SCENE_SPAN_FRAMES - 1 ? tick - 1 : tick;
-      const headingTo = tick === SCENE_SPAN_FRAMES - 1 ? tick : tick + 1;
-      return {
-        constraint: {
-          headingRadians: Math.atan2(
-            authoredXAt({ frame: headingTo, row }) - authoredXAt({ frame: headingFrom, row }),
-            Math.fround(authoredZAt(spans, headingTo)) -
-              Math.fround(authoredZAt(spans, headingFrom)),
-          ),
-          position: [x, z] as const,
-        },
-        tick,
-      };
-    },
+    (_unused, waypoint) =>
+      Math.min((waypoint + 1) * WAYPOINT_INTERVAL_FRAMES, SCENE_SPAN_FRAMES - 1),
   );
+  return ticks.map((tick) => ({
+    constraint: {
+      position: [authoredXAt({ frame: tick, row }), Math.fround(authoredZAt(spans, tick))],
+    },
+    tick,
+  }));
 };
 
 export const authoredActor = (subject: string, row: number): AuthoredActor => ({
