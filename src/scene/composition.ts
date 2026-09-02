@@ -19,7 +19,8 @@ import {
   RootConstraint,
   type ScenePresentationConfiguration,
 } from "../schema";
-import { authoredActor } from "./default";
+import { MOTION_FRAMES_PER_SECOND } from "../motion";
+import { authoredActor, authoredPromptSpans } from "./default";
 import type { motionTimelineDeclaration } from "./timeline";
 
 export const SCENE_COMPOSITION = "scene";
@@ -119,13 +120,32 @@ export const actorGroup = (subject: MotionSubjectDefinition): SceneNode => {
   };
 };
 
+/** Frames before the earliest span of a prompt across the seeded actors, or none when no actor has it. */
+const framesBeforePrompt = (input: {
+  readonly actorCount: number;
+  readonly lead: number;
+  readonly prompt: string;
+}): number | undefined => {
+  const starts = Array.from({ length: input.actorCount }, (_unused, row) =>
+    authoredPromptSpans(row).find((span) => span.prompt === input.prompt)?.start,
+  ).filter((start): start is number => start !== undefined);
+  return starts.length === 0 ? undefined : Math.max(0, Math.min(...starts) - input.lead);
+};
+
 export const cameraTrack = (input: {
   readonly durationFrames: number;
   readonly entities: readonly string[];
   readonly presentation?: ScenePresentationConfiguration["camera"];
 }): SceneNode => {
   const presentation = input.presentation ?? DEFAULT_SCENE_PRESENTATION.camera;
-  const cut = Math.floor(input.durationFrames * presentation.cutFraction);
+  // The cut to the side view is placed by the story, two seconds before the first duck, so the
+  // duck is seen from the side; a scene without a duck cuts at the authored fraction.
+  const cut =
+    framesBeforePrompt({
+      actorCount: input.entities.length,
+      lead: 2 * MOTION_FRAMES_PER_SECOND,
+      prompt: "Duck under obstacle and rise.",
+    }) ?? Math.floor(input.durationFrames * presentation.cutFraction);
   const target =
     presentation.target.kind === "entities"
       ? { ...presentation.target, entities: input.entities }

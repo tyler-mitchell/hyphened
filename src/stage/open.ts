@@ -25,16 +25,25 @@ import { SCENE_SPAN_FRAMES } from "../scene/default";
 import { compileMotionPipelineProgram } from "./compile";
 import { createMotionPipelineSystem } from "./system";
 
-const CRATE_ROUTE_TICK = 150;
-// The duck span runs from frame 320 to 400. A prompt takes effect at the next window boundary and
-// the model needs most of a window to change gait, so the bar sits where the route is two and a
-// half seconds in, past the first full window under the new prompt.
-const BEAM_ROUTE_TICK = 370;
+// Props are placed by the story: a crate a second and a half into each actor's first run, so a
+// running body meets it, and a bar two and a half seconds into its duck span, past the first
+// full window under that prompt.
+const PROP_PLACEMENTS = {
+  beams: { framesIn: 50, prompt: "Duck under obstacle and rise." },
+  crates: { framesIn: 30, prompt: "A person is running." },
+} as const;
 
-/** The world position of the first authored route vertex at or after a tick, per actor. */
-const routePointsAt = (composition: SceneComposition, tick: number) =>
-  composition.actors.flatMap(({ rootTrack, worldOffset }) => {
-    const vertex = rootTrack.items.find(({ at }) => at.tick >= tick);
+/** The world position of each actor's first route vertex after a frame into its first span of a prompt. */
+const routePointsAt = (
+  composition: SceneComposition,
+  placement: { readonly framesIn: number; readonly prompt: string },
+) =>
+  composition.actors.flatMap(({ promptTrack, rootTrack, worldOffset }) => {
+    const span = promptTrack.items.find(({ data }) => data.prompt === placement.prompt);
+    const vertex =
+      span === undefined
+        ? undefined
+        : rootTrack.items.find(({ at }) => at.tick >= span.range.start + placement.framesIn);
     return vertex === undefined
       ? []
       : [
@@ -121,9 +130,8 @@ export const openMotionProduction = async (input: {
     rig: binding.value,
   });
   const system = createMotionPipelineSystem({
-    beams: routePointsAt(composition, BEAM_ROUTE_TICK),
-    // One crate per actor after the walk-to-run boundary, so a running body meets it.
-    crates: routePointsAt(composition, CRATE_ROUTE_TICK),
+    beams: routePointsAt(composition, PROP_PLACEMENTS.beams),
+    crates: routePointsAt(composition, PROP_PLACEMENTS.crates),
     embeddings,
     manifest: provider.manifest,
     program,
