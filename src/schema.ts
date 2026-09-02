@@ -717,16 +717,18 @@ export const ScenePresentationConfiguration = $.ScenePresentationConfiguration.m
       kind: "perspective",
       near: 0.1,
     },
+    // Both shots orbit the actors' centroid; at four metres of column spacing plus the route sway,
+    // the distance must hold both bodies in the 45 degree field.
     shots: [
       {
-        distance: 5.5,
+        distance: 9,
         label: "Opening Camera",
         mode: "orbit",
         pitch: 0.22,
         yaw: 0.55,
       },
       {
-        distance: 4.5,
+        distance: 10,
         label: "Side Camera",
         mode: "orbit",
         pitch: 0.12,

@@ -10,12 +10,14 @@ export const SCENE_SPAN_FRAMES = 680;
 export const WAYPOINT_INTERVAL_FRAMES = MOTION_FRAMES_PER_SECOND;
 
 const DEFAULT_PACE_METRES_PER_SECOND = 1.3;
-// Each pace is the timetable the route claims for its prompt. It must agree with the gait the
-// prompt's embedding produces. Upstream's own capture under the running prompt runs at 2.3 to
-// 3.1 m/s; a timetable far above that makes the body a hunched sprint, not the prompt's run.
+// Each pace is the timetable the route claims for its prompt. The prompt picks the gait family and
+// the pace sets its intensity: the body follows the root motion it is conditioned on. The
+// reference's capture under the running prompt runs at 2.3 to 3.1 m/s, a jog; a demand the text
+// branch cannot produce is filled by text-free motion and reads as a hunched sprint. With two
+// seconds of history and one future claim per window, 3.4 is the next intensity to judge.
 const PROMPT_PACE_METRES_PER_SECOND: Readonly<Record<string, number>> = {
   "A person is kicking with their right leg.": 0,
-  "A person is running.": 2.8,
+  "A person is running.": 3.4,
   "A person is standing still.": 0,
   "A person is walking.": 1.3,
   "A person reaches forward with their right hand to press a button.": 0,

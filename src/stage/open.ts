@@ -26,6 +26,25 @@ import { compileMotionPipelineProgram } from "./compile";
 import { createMotionPipelineSystem } from "./system";
 
 const CRATE_ROUTE_TICK = 150;
+// The duck span runs from frame 320 to 400. A prompt takes effect at the next window boundary and
+// the model needs most of a window to change gait, so the bar sits where the route is two and a
+// half seconds in, past the first full window under the new prompt.
+const BEAM_ROUTE_TICK = 370;
+
+/** The world position of the first authored route vertex at or after a tick, per actor. */
+const routePointsAt = (composition: SceneComposition, tick: number) =>
+  composition.actors.flatMap(({ rootTrack, worldOffset }) => {
+    const vertex = rootTrack.items.find(({ at }) => at.tick >= tick);
+    return vertex === undefined
+      ? []
+      : [
+          [
+            worldOffset[0] + vertex.data.position[0],
+            worldOffset[1],
+            worldOffset[2] + vertex.data.position[1],
+          ] as const,
+        ];
+  });
 
 /** Acquire authored data and assets, then return one framework-owned production session. */
 export const openMotionProduction = async (input: {
@@ -101,22 +120,10 @@ export const openMotionProduction = async (input: {
     render,
     rig: binding.value,
   });
-  // One crate per actor on its own route, at the first authored vertex after the walk-to-run
-  // boundary, so a running body meets it.
-  const crates = composition.actors.flatMap(({ rootTrack, worldOffset }) => {
-    const vertex = rootTrack.items.find(({ at }) => at.tick >= CRATE_ROUTE_TICK);
-    return vertex === undefined
-      ? []
-      : [
-          [
-            worldOffset[0] + vertex.data.position[0],
-            worldOffset[1],
-            worldOffset[2] + vertex.data.position[1],
-          ] as const,
-        ];
-  });
   const system = createMotionPipelineSystem({
-    crates,
+    beams: routePointsAt(composition, BEAM_ROUTE_TICK),
+    // One crate per actor after the walk-to-run boundary, so a running body meets it.
+    crates: routePointsAt(composition, CRATE_ROUTE_TICK),
     embeddings,
     manifest: provider.manifest,
     program,

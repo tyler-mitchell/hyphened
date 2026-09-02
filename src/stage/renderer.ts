@@ -1,6 +1,7 @@
 import tgpu, { d, std } from "typegpu";
 import {
   Body,
+  BODY_FLAG_HIDDEN,
   BODY_FLAG_STATIC,
   capabilityResourceKey,
   defineGraphCapability,
@@ -173,17 +174,17 @@ const cubeNormals = tgpu.const(
     return byAxis[faceAxes[face]!];
   }),
 );
-// Every physics pool row draws as one instanced box; static rows (the actor colliders and the
-// slab) degenerate to nothing, so only loose bodies are visible.
+// Every physics pool row draws as one instanced box; a hidden row (a collider whose visual lives
+// elsewhere) degenerates to nothing.
 const crateVertex = tgpu.vertexFn({
   in: { instanceIndex: d.builtin.instanceIndex, vertexIndex: d.builtin.vertexIndex },
-  out: { normal: d.vec3f, position: d.builtin.position },
+  out: { normal: d.vec3f, position: d.builtin.position, fixed: d.interpolate("flat", d.f32) },
 })(({ instanceIndex, vertexIndex }) => {
   "use gpu";
   const body = crateBindings.$.bodies[instanceIndex];
   const pose = interpolateBodyPose(body, crateBindings.$.previousBodies[instanceIndex], true);
   const shape = crateBindings.$.shapes[body.shapeOffset];
-  const visual = std.select(d.f32(1), d.f32(0), (body.flags & d.u32(BODY_FLAG_STATIC)) !== 0);
+  const visual = std.select(d.f32(1), d.f32(0), (body.flags & d.u32(BODY_FLAG_HIDDEN)) !== 0);
   const corner = cubeCorners.$[vertexIndex];
   const scaled = d.vec3f(
     corner.x * shape.halfExtents.x * visual,
@@ -193,6 +194,7 @@ const crateVertex = tgpu.vertexFn({
   const local = std.add(shape.localPosition, rotateByQuat(shape.localOrientation, scaled));
   const world = std.add(pose.position, rotateByQuat(pose.orientation, local));
   return {
+    fixed: std.select(d.f32(0), d.f32(1), (body.flags & d.u32(BODY_FLAG_STATIC)) !== 0),
     normal: rotateByQuat(
       pose.orientation,
       rotateByQuat(shape.localOrientation, cubeNormals.$[u32DivMod(vertexIndex, d.u32(6)).x]),
@@ -297,22 +299,25 @@ export const createMotionRenderer = (input: {
       },
     },
   });
-  const crateFragment = tgpu.fragmentFn({ in: { normal: d.vec3f }, out: SceneColor })(
-    ({ normal }) => {
-      "use gpu";
-      const light = std.max(
-        std.dot(
-          std.normalize(normal),
-          std.normalize(motionViewBindings.$.view[d.u32(0)].lightDirection.xyz),
-        ),
-        d.f32(0),
-      );
-      const intensity =
-        d.f32(input.program.ambientIntensity) + light * d.f32(input.program.directionalIntensity);
-      const output = d.vec4f(0.82 * intensity, 0.42 * intensity, 0.16 * intensity, 1);
-      return { capture: output, presentation: output };
-    },
-  );
+  // Loose bodies read as warm crates; fixed obstacles as cool steel.
+  const crateFragment = tgpu.fragmentFn({
+    in: { normal: d.vec3f, fixed: d.interpolate("flat", d.f32) },
+    out: SceneColor,
+  })(({ normal, fixed }) => {
+    "use gpu";
+    const light = std.max(
+      std.dot(
+        std.normalize(normal),
+        std.normalize(motionViewBindings.$.view[d.u32(0)].lightDirection.xyz),
+      ),
+      d.f32(0),
+    );
+    const intensity =
+      d.f32(input.program.ambientIntensity) + light * d.f32(input.program.directionalIntensity);
+    const albedo = std.mix(d.vec3f(0.82, 0.42, 0.16), d.vec3f(0.35, 0.4, 0.48), fixed);
+    const output = d.vec4f(std.mul(albedo, intensity), 1);
+    return { capture: output, presentation: output };
+  });
   const crateFamily = defineShaderFamily({
     id: "motion-crates",
     variants: {

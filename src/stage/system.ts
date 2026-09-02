@@ -40,6 +40,8 @@ const phase = {
 
 /** Compose the real provider-to-pixel path as one WebGPU Engine capability graph. */
 export const createMotionPipelineSystem = (input: {
+  /** World placements of the bars over the actors' routes at the duck span. */
+  readonly beams: ReadonlyArray<readonly [number, number, number]>;
   /** World placements of loose crates on the actors' routes. */
   readonly crates: ReadonlyArray<readonly [number, number, number]>;
   readonly embeddings: ReadonlyArray<TextEmbedding>;
@@ -88,6 +90,7 @@ export const createMotionPipelineSystem = (input: {
     program: input.program.motion,
   });
   const bodies = createMotionBodies({
+    beams: input.beams,
     clock: timelineClockReference(clock),
     crates: input.crates,
     ground: input.program.render.ground,
