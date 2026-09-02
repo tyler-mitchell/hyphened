@@ -426,6 +426,12 @@ export const $ = type.module({
     camera: "ScenePresentationCamera",
   },
   SceneReadinessInput: {},
+  SetMotionSpanInput: {
+    actor: "NonEmptyString",
+    durationFrames: "number.integer > 0",
+    prompt: "NonEmptyString",
+    startFrame: "number.integer >= 0",
+  },
   SceneWindowInput: {
     durationFrames: "1 <= number.integer <= 100000",
     startFrame: "number.integer >= 0",
@@ -797,6 +803,7 @@ export const SceneAtInput = $.SceneAtInput;
 export const SceneHistoryInput = $.SceneHistoryInput;
 export const SceneReadinessInput = $.SceneReadinessInput;
 export const SceneWindowInput = $.SceneWindowInput;
+export const SetMotionSpanInput = $.SetMotionSpanInput;
 export const MotionTemporalSheetInput = $.MotionTemporalSheetInput;
 
 export const TextEmbedding = $.TextEmbedding;

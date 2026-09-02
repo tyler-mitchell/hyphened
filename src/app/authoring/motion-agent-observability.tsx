@@ -9,6 +9,7 @@ import { MotionTemporalSheetInput } from "../../schema";
 import { publishCaptureArtifact } from "./capture-artifact";
 import { captureMotionTemporalSheet } from "./capture-temporal-sheet";
 import { cameraCompositionTools } from "./camera-composition-tools";
+import { motionSpanTools } from "./motion-span-tools";
 import { sceneCompositionTools } from "./scene-composition-tools";
 import { transportTools } from "./transport-tools";
 import { useAgentTools } from "./use-agent-tool";
@@ -45,6 +46,7 @@ export const MotionAgentObservability = () => {
   };
   useAgentTools([
     ...cameraCompositionTools({ synchronize, timeline }),
+    ...motionSpanTools({ synchronize, timeline }),
     ...sceneCompositionTools({ synchronize, timeline }),
     ...transportTools({ timeline }),
     {
