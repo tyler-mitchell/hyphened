@@ -10,8 +10,8 @@ import {
   type SystemGraphCapability,
 } from "webgpu-engine";
 
+import type { MotionPresentation } from "../motion/presentation";
 import { MotionWorldTransform, type MotionRenderProgram } from "../schema";
-import type { MotionPresentation } from "./presentation";
 
 const rotationColumns = tgpu.fn(
   [d.vec4f],

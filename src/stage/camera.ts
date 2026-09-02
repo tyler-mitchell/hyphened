@@ -14,7 +14,7 @@ import {
   type UniformResourceSpec,
 } from "webgpu-engine";
 
-import type { MotionPresentation } from "./presentation";
+import type { MotionPresentation } from "../motion/presentation";
 import type { createMotionSurface } from "./surface";
 import { MotionView, type MotionCameraProgram, type MotionRenderProgram } from "../schema";
 

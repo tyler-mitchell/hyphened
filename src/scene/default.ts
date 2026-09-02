@@ -3,16 +3,19 @@ import { MOTION_FRAMES_PER_SECOND } from "../motion";
 import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
 
 export const SCENE_SPAN_FRAMES = 680;
-// Route vertices every three seconds. The provider interpolates the route between them and claims
-// its own goals relative to each generated window, so this spacing only shapes the path geometry.
-export const WAYPOINT_INTERVAL_FRAMES = 3 * MOTION_FRAMES_PER_SECOND;
+// Route vertices every second. Each vertex inside a window's generation horizon is a timed planar
+// root claim; the first vertex beyond it is the future token the model plans toward. One second
+// keeps the timetable tight enough that the actor neither sprints toward a distant goal nor
+// coasts once ahead of it.
+export const WAYPOINT_INTERVAL_FRAMES = MOTION_FRAMES_PER_SECOND;
 
 const DEFAULT_PACE_METRES_PER_SECOND = 1.3;
-// The released weights' training spread is 0.46 m/s per planar root-velocity axis and 1.44 m of
-// root travel within a window; a claimed pace far beyond that produces leaps, not running.
+// Each pace is the timetable the route claims for its prompt. It must agree with the gait the
+// prompt's embedding produces. Upstream's own capture under the running prompt runs at 2.3 to
+// 3.1 m/s; a timetable far above that makes the body a hunched sprint, not the prompt's run.
 const PROMPT_PACE_METRES_PER_SECOND: Readonly<Record<string, number>> = {
   "A person is kicking with their right leg.": 0,
-  "A person is running.": 2.5,
+  "A person is running.": 2.8,
   "A person is standing still.": 0,
   "A person is walking.": 1.3,
   "A person reaches forward with their right hand to press a button.": 0,
@@ -37,11 +40,22 @@ export const authoredPromptSpans = (): readonly AuthoredPromptSpan[] => {
   }, []);
 };
 
-const paceAtFrame = (spans: readonly AuthoredPromptSpan[], frame: number): number => {
-  const span = spans.findLast(({ start }) => start <= frame) ?? spans[0];
-  return span === undefined
+// A body changes speed over a couple of seconds, so the timetable ramps between prompts instead
+// of stepping; a step demands the new pace one frame after the old one.
+const PACE_TRANSITION_FRAMES = 2 * MOTION_FRAMES_PER_SECOND;
+
+const spanPace = (span: AuthoredPromptSpan | undefined): number =>
+  span === undefined
     ? DEFAULT_PACE_METRES_PER_SECOND
     : (PROMPT_PACE_METRES_PER_SECOND[span.prompt] ?? DEFAULT_PACE_METRES_PER_SECOND);
+
+const paceAtFrame = (spans: readonly AuthoredPromptSpan[], frame: number): number => {
+  const index = spans.findLastIndex(({ start }) => start <= frame);
+  const span = spans[index] ?? spans[0];
+  // The scene starts from rest, so the first span ramps up from zero like every later change.
+  const previous = index > 0 ? spanPace(spans[index - 1]) : 0;
+  const progress = span === undefined ? 1 : (frame - span.start) / PACE_TRANSITION_FRAMES;
+  return previous + (spanPace(span) - previous) * Math.min(1, Math.max(0, progress));
 };
 
 const authoredZAt = (spans: readonly AuthoredPromptSpan[], frame: number): number => {
@@ -52,22 +66,31 @@ const authoredZAt = (spans: readonly AuthoredPromptSpan[], frame: number): numbe
   return -travelled;
 };
 
-const authoredXAt = (input: { readonly frame: number; readonly row: number }): number =>
-  Math.fround(input.row * 4 * Math.sin((input.frame / (SCENE_SPAN_FRAMES - 1)) * Math.PI));
+// The sway follows the path, not the clock: a standing or ducking actor is not asked to shuffle
+// sideways, which the model answers by kneeling.
+const authoredXAt = (input: { readonly progress: number; readonly row: number }): number =>
+  Math.fround(input.row * 4 * Math.sin(input.progress * Math.PI));
 
 export const authoredRootConstraints = (row: number): readonly AuthoredRootConstraint[] => {
   const spans = authoredPromptSpans();
+  // Vertices sit half an interval off the window grid (frames 10, 30, 50, ...). A vertex on a
+  // window's first generated frame would snap that frame onto the timetable regardless of where
+  // the history ended; half an interval in, the model has frames to reach it.
   const ticks = Array.from(
     { length: Math.ceil((SCENE_SPAN_FRAMES - 1) / WAYPOINT_INTERVAL_FRAMES) },
     (_unused, waypoint) =>
-      Math.min((waypoint + 1) * WAYPOINT_INTERVAL_FRAMES, SCENE_SPAN_FRAMES - 1),
+      Math.min((waypoint + 0.5) * WAYPOINT_INTERVAL_FRAMES, SCENE_SPAN_FRAMES - 1),
   );
-  return ticks.map((tick) => ({
-    constraint: {
-      position: [authoredXAt({ frame: tick, row }), Math.fround(authoredZAt(spans, tick))],
-    },
-    tick,
-  }));
+  const pathLength = -authoredZAt(spans, SCENE_SPAN_FRAMES - 1);
+  return ticks.map((tick) => {
+    const z = authoredZAt(spans, tick);
+    return {
+      constraint: {
+        position: [authoredXAt({ progress: -z / pathLength, row }), Math.fround(z)],
+      },
+      tick,
+    };
+  });
 };
 
 export const authoredActor = (subject: string, row: number): AuthoredActor => ({

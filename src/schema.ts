@@ -572,9 +572,6 @@ export const AuthoredActor = $.AuthoredActor.merge({
 }).readonly();
 export type AuthoredActor = typeof AuthoredActor.infer;
 
-export const RootKeyframe = $.RootKeyframe;
-export type RootKeyframe = typeof RootKeyframe.infer;
-
 /** Immutable authored content from which a provider constructs one shareable motion product. */
 export const MotionProductSpecification = $.MotionProductSpecification.narrow(
   ({ conditioning, frameCount, rootTrack }, context) =>

@@ -10,7 +10,7 @@ import {
 
 import type { MotionCamera } from "./camera";
 import { motionViewBindings, MotionPoseSample, type MotionRenderProgram } from "../schema";
-import type { MotionPresentation } from "./presentation";
+import type { MotionPresentation } from "../motion/presentation";
 import type { SkinPalette } from "./skin";
 import type { createMotionSurface } from "./surface";
 

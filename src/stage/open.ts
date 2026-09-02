@@ -130,6 +130,23 @@ export const openMotionProduction = async (input: {
         ),
       );
       await timeline.transport.stepBy({ ticks: 1 });
+      // Generation advances at the present moment whether or not the transport plays. Play only
+      // once every actor is presented at the first frame, so no actor appears mid-scene.
+      const samples = system.metadata.motion.samples;
+      const presentedId =
+        system.capabilityExports[samples.capability]!.exports[samples.export]!.resource.id;
+      const jointCount = system.metadata.motion.jointCount;
+      const everyActorPresented = async (): Promise<boolean> => {
+        const presented = (await engine.read({ id: presentedId })) as readonly {
+          readonly present: number;
+        }[];
+        return program.motion.actors.every(
+          (_actor, index) => presented[index * jointCount]?.present === 1,
+        );
+      };
+      while (!(await everyActorPresented())) {
+        // Each read settles after the device finishes the frame that ran before it.
+      }
       await timeline.transport.play();
     },
   };
