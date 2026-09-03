@@ -14,9 +14,9 @@ import {
   type UniformResourceSpec,
 } from "webgpu-engine";
 
-import type { MotionPresentation } from "../motion/presentation";
+import type { MotionPresentation } from "learned-motion/motion/presentation";
 import type { createMotionSurface } from "./surface";
-import { MotionView, type MotionCameraProgram, type MotionRenderProgram } from "../schema";
+import { MotionView, type MotionCameraProgram, type MotionRenderProgram } from "learned-motion/schema";
 
 // WGSL supports textureDimensions(texture_depth_2d); TypeGPU 0.12 omits depth textures from its
 // TypeScript overload while its resolver emits the correct intrinsic.

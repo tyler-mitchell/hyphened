@@ -8,7 +8,7 @@ import {
   sceneCompositionEvents,
 } from "../../scene/composition";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
-import { BodyItemData, RemoveBodyInput, SetBodyInput } from "../../schema";
+import { BodyItemData, RemoveBodyInput, SetBodyInput } from "learned-motion/schema";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
 type MotionTimeline = TimelineRuntime<typeof motionTimelineDeclaration>;

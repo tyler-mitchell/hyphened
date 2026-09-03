@@ -5,7 +5,7 @@ import { compileMotionCameraRows } from "../../stage/camera";
 import { compileMotionCameraProgram } from "../../stage/compile";
 import { MOTION_CAMERA_COMMANDS } from "../../stage/system";
 import { SCENE_COMPOSITION, SceneComposition } from "../../scene/composition";
-import { MotionTemporalSheetInput } from "../../schema";
+import { MotionTemporalSheetInput } from "learned-motion/schema";
 import { publishCaptureArtifact } from "./capture-artifact";
 import { captureMotionTemporalSheet } from "./capture-temporal-sheet";
 import { actorPathTools } from "./actor-path-tools";

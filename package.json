@@ -29,6 +29,7 @@
     "@tanstack/react-start": "^1.167.42",
     "arktype": "catalog:",
     "arktype-adapters": "workspace:*",
+    "learned-motion": "workspace:*",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

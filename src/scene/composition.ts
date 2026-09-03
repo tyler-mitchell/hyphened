@@ -19,8 +19,8 @@ import {
   PromptItemData,
   RootConstraint,
   type ScenePresentationConfiguration,
-} from "../schema";
-import { MOTION_FRAMES_PER_SECOND } from "../motion";
+} from "learned-motion/schema";
+import { MOTION_FRAMES_PER_SECOND } from "learned-motion/motion";
 import { authoredActor, authoredPromptSpans } from "./default";
 import type { motionTimelineDeclaration } from "./timeline";
 

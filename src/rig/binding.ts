@@ -1,6 +1,6 @@
 import { type } from "arktype";
 
-import { MotionSkeletonRestPose, type MotionSkeletonDefinition } from "../schema";
+import { MotionSkeletonRestPose, type MotionSkeletonDefinition } from "learned-motion/schema";
 import type { EmbodimentRestPose } from "./skeleton";
 
 /** Minimal physical-rig surface required to prove direct compatibility with learned motion. */

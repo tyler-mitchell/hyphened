@@ -2,7 +2,7 @@ import type { TimelineRuntime } from "@coretime/core";
 
 import type { motionTimelineDeclaration } from "../../scene/timeline";
 import { startNewScene } from "../../scene/project";
-import { ControlMotionInput } from "../../schema";
+import { ControlMotionInput } from "learned-motion/schema";
 import { restartMotionScene } from "../../stage/open";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 

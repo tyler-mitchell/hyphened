@@ -13,11 +13,11 @@ import {
   replanRequestFor,
   requestScheduleCommand,
   subjectAdmissionCommands,
-} from "../motion/schedule";
+} from "learned-motion/motion/schedule";
 import { MOTION_FRAMES_PER_SECOND, motionTimelineDeclaration } from "../scene/timeline";
-import { loadMotionProvider } from "../provider/load";
-import { loadTextEmbedding, MOTION_PROMPT_LIBRARY } from "../provider/embedding";
-import { PUBLISHED_FRAMES_PER_WINDOW } from "../provider/generation/layout";
+import { loadMotionProvider } from "learned-motion/provider/load";
+import { loadTextEmbedding, MOTION_PROMPT_LIBRARY } from "learned-motion/provider/embedding";
+import { PUBLISHED_FRAMES_PER_WINDOW } from "learned-motion/provider/generation/layout";
 import {
   actorGroup,
   bodyTrack,
@@ -40,7 +40,7 @@ import {
   PHYSICS_STATIC_UPDATE_SCHEDULE,
   ScenePresentationConfiguration,
   type ScenePresentationConfigurationInput,
-} from "../schema";
+} from "learned-motion/schema";
 import { authoredBodies, SCENE_SPAN_FRAMES } from "../scene/default";
 import { promptLibrary } from "../scene/prompts";
 import { compileMotionCompilation, compileMotionPipelineProgram } from "./compile";

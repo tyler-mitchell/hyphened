@@ -3,8 +3,8 @@ import type {
   AuthoredPromptSpan,
   AuthoredRootConstraint,
   BodyItemData,
-} from "../schema";
-import { MOTION_FRAMES_PER_SECOND } from "../motion";
+} from "learned-motion/schema";
+import { MOTION_FRAMES_PER_SECOND } from "learned-motion/motion";
 import { DEFAULT_PACE_METRES_PER_SECOND, promptLibrary } from "./prompts";
 
 export const SCENE_SPAN_FRAMES = 680;

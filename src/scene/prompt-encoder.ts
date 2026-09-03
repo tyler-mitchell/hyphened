@@ -6,7 +6,7 @@ import {
   motionTextEmbedding,
   motionTextEmbeddingSource,
   type TextEmbedding,
-} from "../provider/embedding";
+} from "learned-motion/provider/embedding";
 
 const PromptInput = type({ prompt: "string > 0" });
 const GradioFileUpdate = type({ value: { url: "string" } });

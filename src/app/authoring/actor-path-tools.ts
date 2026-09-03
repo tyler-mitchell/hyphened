@@ -11,7 +11,7 @@ import {
 } from "../../scene/composition";
 import { routeConstraints } from "../../scene/default";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
-import { RootConstraint, SetActorPathInput } from "../../schema";
+import { RootConstraint, SetActorPathInput } from "learned-motion/schema";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
 type MotionTimeline = TimelineRuntime<typeof motionTimelineDeclaration>;

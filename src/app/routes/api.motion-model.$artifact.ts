@@ -4,11 +4,11 @@ import { Readable } from "node:stream";
 
 import { createFileRoute } from "@tanstack/react-router";
 
-import { runtimeCheckpoint } from "../../provider/checkpoint/runtime";
+import { runtimeCheckpoint } from "learned-motion/provider/checkpoint/runtime";
 import {
   resolveInstalledRuntimeArtifact,
   resolveInstalledModelRoot,
-} from "../../provider/checkpoint/catalog.server";
+} from "learned-motion/provider/checkpoint/catalog.server";
 
 interface SatisfiedByteRange {
   readonly end: number;

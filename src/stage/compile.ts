@@ -13,7 +13,7 @@ import {
   MotionRenderProgram,
   type MotionSceneComposition,
   INITIAL_PRODUCT_SEED,
-} from "../schema";
+} from "learned-motion/schema";
 
 export const compileMotionCameraProgram = (input: {
   readonly composition: MotionSceneComposition;

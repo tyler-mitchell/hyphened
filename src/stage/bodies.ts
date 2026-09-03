@@ -15,13 +15,13 @@ import {
   type UniformResourceSpec,
 } from "webgpu-engine";
 
-import { quaternionFromColumns } from "../gpu";
+import { quaternionFromColumns } from "learned-motion/gpu";
 import {
   actorProductFrame,
   MotionProductFrameSource,
   productFrameCommitted,
   type MotionProduct,
-} from "../motion/product";
+} from "learned-motion/motion/product";
 import {
   BODY_POOL_SPARE,
   MOTION_FRAMES_PER_SECOND,
@@ -32,7 +32,7 @@ import {
   PHYSICS_SUBSTEP_CLOCK,
   type MotionPresentationProgram,
   type MotionSubjectDefinition,
-} from "../schema";
+} from "learned-motion/schema";
 
 export const PHYSICS_ID = "physics";
 /** An upright box around the pelvis: the collider a moving body presents to loose objects. */

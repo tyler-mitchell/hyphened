@@ -19,6 +19,9 @@
       "@coretime/core/indexeddb": ["../../packages/core-time/src/indexeddb.ts"],
       "@coretime/project": ["../../packages/core-time-project/src/index.ts"],
       "@coretime/project/browser": ["../../packages/core-time-project/src/browser.ts"],
+      "learned-motion": ["../../packages/learned-motion/src/index.ts"],
+      "learned-motion/motion-model.json": ["../../packages/learned-motion/motion-model.json"],
+      "learned-motion/*": ["../../packages/learned-motion/src/*"],
       "webgpu-engine": ["../../packages/webgpu-engine/src/index.ts"],
       "webgpu-engine/react": ["../../packages/webgpu-engine/src/react.tsx"],
       "webgpu-engine/witness": ["../../packages/webgpu-engine/src/witness-engine.ts"]

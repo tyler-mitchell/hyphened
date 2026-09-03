@@ -15,11 +15,11 @@ import {
   type SystemGraphCapability,
 } from "webgpu-engine";
 
-import { u32DivMod } from "../gpu";
+import { u32DivMod } from "learned-motion/gpu";
 import { PHYSICS_ID, type MotionBodies } from "./bodies";
 import type { MotionCamera } from "./camera";
-import { motionViewBindings, MotionPoseSample, type MotionRenderProgram } from "../schema";
-import type { MotionPresentation } from "../motion/presentation";
+import { motionViewBindings, MotionPoseSample, type MotionRenderProgram } from "learned-motion/schema";
+import type { MotionPresentation } from "learned-motion/motion/presentation";
 import type { SkinPalette } from "./skin";
 import type { createMotionSurface } from "./surface";
 

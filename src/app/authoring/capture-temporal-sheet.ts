@@ -11,7 +11,7 @@ import {
   SceneComposition,
 } from "../../scene/composition";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
-import { CameraItemData, DEFAULT_TEMPORAL_SHEET_COLUMNS, PromptItemData } from "../../schema";
+import { CameraItemData, DEFAULT_TEMPORAL_SHEET_COLUMNS, PromptItemData } from "learned-motion/schema";
 
 const reviewHints = [
   "Check that the window, camera, and visible performers fit the question.",

@@ -9,7 +9,7 @@ import {
   SceneAtInput,
   SceneHistoryInput,
   SceneWindowInput,
-} from "../../schema";
+} from "learned-motion/schema";
 import { readSceneHistory } from "../../scene/history";
 import {
   compositionRevision,
