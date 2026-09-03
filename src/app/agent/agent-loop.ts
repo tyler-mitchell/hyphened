@@ -57,6 +57,19 @@ const isText = (block: ContentBlock): block is TextBlock => block.type === "text
 const readBlocks = (content: unknown): ReadonlyArray<ContentBlock> =>
   Array.isArray(content) ? (content as ReadonlyArray<ContentBlock>) : [];
 
+/**
+ * How much of one tool's result is handed back. The read tools answer with the whole composition
+ * when asked, and every result stays in the history for the rest of the exchange, so an unbounded
+ * one ends the conversation a few turns later. The agent is told where the cut fell and which tool
+ * answers the same question in summary.
+ */
+const RESULT_LIMIT = 6000;
+
+const boundResult = (outcome: string) =>
+  outcome.length <= RESULT_LIMIT
+    ? outcome
+    : `${outcome.slice(0, RESULT_LIMIT)}\n\n[cut after ${String(RESULT_LIMIT)} of ${String(outcome.length)} characters. read_scene_summary answers the same question compactly.]`;
+
 /** One tool the model asked for, in this file's own shape rather than a provider's. */
 interface ToolCall {
   readonly id: string;
@@ -300,7 +313,7 @@ export const runAgentExchange = async (input: {
         const outcome = await document
           .modelContext!.executeTool(known.tool, JSON.stringify(block.input ?? {}))
           .then(
-            (value) => value ?? "",
+            (value) => boundResult(value ?? ""),
             (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
           );
         input.onTurn({
