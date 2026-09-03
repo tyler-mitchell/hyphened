@@ -1,7 +1,7 @@
 import type { TimelineCompositionChange, TimelineRuntime } from "@coretime/core";
 
-import { MOTION_PROMPT_LIBRARY } from "../../provider/embedding";
 import { PUBLISHED_FRAMES_PER_WINDOW } from "../../provider/generation/layout";
+import { promptLibrary } from "../../scene/prompts";
 import {
   actorGroupId,
   actorTrackId,
@@ -13,7 +13,7 @@ import {
   sceneCompositionEvents,
 } from "../../scene/composition";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
-import { PromptItemData, SetMotionSpanInput } from "../../schema";
+import { ListMotionPromptsInput, PromptItemData, SetMotionSpanInput } from "../../schema";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
 type MotionTimeline = TimelineRuntime<typeof motionTimelineDeclaration>;
@@ -46,8 +46,37 @@ export const motionSpanTools = ({
   readonly timeline: MotionTimeline;
 }): readonly RegisteredWebMcpTool[] => [
   {
+    annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "Set what one actor does over a frame range: one prompt from the pinned library (walking, running, standing still, kicking, reaching, ducking, stepping up). Overlapped spans are trimmed or split; the range snaps to the 40-frame generation grid. The actor replans from the edited span and its new motion appears as it generates.",
+      "List the prompts an actor can be conditioned on, each with its route pace in metres per second (zero means the actor performs in place). set_motion_span accepts exactly these prompt strings.",
+    execute: async (raw) => {
+      ListMotionPromptsInput.assert(raw);
+      return webMcpResult({
+        prompts: promptLibrary.list().map(({ pace, prompt }) => ({ pace, prompt })),
+      });
+    },
+    inputSchema: webMcpInputSchema(ListMotionPromptsInput),
+    name: "list_motion_prompts",
+    outputSchema: {
+      additionalProperties: false,
+      properties: {
+        prompts: {
+          items: {
+            additionalProperties: false,
+            properties: { pace: { type: "number" }, prompt: { type: "string" } },
+            required: ["pace", "prompt"],
+            type: "object",
+          },
+          type: "array",
+        },
+      },
+      required: ["prompts"],
+      type: "object",
+    },
+  },
+  {
+    description:
+      "Set what one actor does over a frame range: one prompt string from list_motion_prompts. Overlapped spans are trimmed or split; the range snaps to the 40-frame generation grid. The actor replans from the edited span and its new motion appears as it generates.",
     execute: async (raw) => {
       const input = SetMotionSpanInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -60,10 +89,12 @@ export const motionSpanTools = ({
           ),
         );
       }
-      const library = MOTION_PROMPT_LIBRARY.map(({ prompt }) => prompt);
-      if (!library.includes(input.prompt)) {
+      if (promptLibrary.find(input.prompt) === undefined) {
+        const library = promptLibrary.list().map(({ prompt }) => prompt);
         return failure(
-          new Error(`"${input.prompt}" is not a pinned prompt; prompts: ${library.join(" | ")}`),
+          new Error(
+            `"${input.prompt}" is not in the prompt library; prompts: ${library.join(" | ")}`,
+          ),
         );
       }
       const grid = PUBLISHED_FRAMES_PER_WINDOW;

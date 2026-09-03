@@ -439,6 +439,7 @@ export const $ = type.module({
     camera: "ScenePresentationCamera",
   },
   SceneReadinessInput: {},
+  ListMotionPromptsInput: {},
   PlanarPoint: ["Finite", "Finite"],
   RemoveBodyInput: { id: "NonEmptyString" },
   SetActorPathInput: { actor: "NonEmptyString", path: "PlanarPoint[] >= 1" },
@@ -826,6 +827,7 @@ export type MotionSceneComposition = typeof $.MotionSceneComposition.infer;
 export const DEFAULT_SCENE_PRESENTATION = ScenePresentationConfiguration.assert({});
 
 export const SetCameraTimelineItemInput = $.CameraTimelineItemInput;
+export const ListMotionPromptsInput = $.ListMotionPromptsInput;
 export const RemoveCameraTimelineItemInput = $.RemoveCameraTimelineItemInput;
 export const ControlMotionInput = $.ControlMotionInput;
 export const EditSceneCompositionInput = $.EditSceneCompositionInput;

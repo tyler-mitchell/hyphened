@@ -8,7 +8,7 @@ import type {
   TimelineSeriesId,
 } from "@coretime/core";
 
-import { MOTION_PROMPT_LIBRARY } from "../provider/embedding";
+import { promptLibrary } from "./prompts";
 import {
   $,
   ActorPresence,
@@ -199,14 +199,10 @@ export const cameraTrack = (input: {
   };
 };
 
-const availablePrompts: ReadonlySet<string> = new Set(
-  MOTION_PROMPT_LIBRARY.map(({ prompt }) => prompt),
-);
-
 const PromptSpan = $.PromptSpan.narrow(
   (item, context) =>
-    availablePrompts.has(item.data.prompt) ||
-    context.mustBe("a prompt with a conditioning feature in this build"),
+    promptLibrary.find(item.data.prompt) !== undefined ||
+    context.mustBe("a prompt with a conditioning feature in the prompt library"),
 )
   .narrow(
     (item, context) =>
@@ -216,9 +212,9 @@ const PromptSpan = $.PromptSpan.narrow(
   )
   .pipe((item) => ({
     ...item,
-    // The pinned embedding artifact's digest is the conditioning identity.
+    // The embedding row's digest is the conditioning identity.
     conditioning: {
-      identity: MOTION_PROMPT_LIBRARY.find(({ prompt }) => prompt === item.data.prompt)!.sha256,
+      identity: promptLibrary.find(item.data.prompt)!.identity,
     },
   }))
   .to($.MotionPromptSpan);

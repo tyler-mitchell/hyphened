@@ -46,7 +46,7 @@ export const createMotionPipelineSystem = (input: {
     readonly fixed: ReadonlyArray<PhysicsBodyInit>;
     readonly loose: ReadonlyArray<PhysicsBodyInit>;
   };
-  readonly embeddings: ReadonlyArray<TextEmbedding>;
+  readonly embeddings: () => ReadonlyArray<TextEmbedding>;
   readonly manifest: Parameters<typeof createMotionProvider>[0]["manifest"];
   readonly program: MotionPipelineProgram;
   readonly restPose: Parameters<typeof createMotionProvider>[0]["restPose"];

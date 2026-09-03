@@ -42,6 +42,7 @@ import {
   type ScenePresentationConfigurationInput,
 } from "../schema";
 import { authoredBodies, SCENE_SPAN_FRAMES } from "../scene/default";
+import { promptLibrary } from "../scene/prompts";
 import { compileMotionCompilation, compileMotionPipelineProgram } from "./compile";
 import { createMotionPipelineSystem } from "./system";
 
@@ -96,9 +97,9 @@ export const openMotionProduction = async (input: {
   if (provider.status === "unavailable") throw new Error(provider.reason);
   const unavailableEmbedding = loadedEmbeddings.find(({ status }) => status === "unavailable");
   if (unavailableEmbedding?.status === "unavailable") throw new Error(unavailableEmbedding.reason);
-  const embeddings = loadedEmbeddings.flatMap((loaded) =>
-    loaded.status === "available" ? [loaded.value] : [],
-  );
+  for (const loaded of loadedEmbeddings) {
+    if (loaded.status === "available") promptLibrary.admit({ embedding: loaded.value });
+  }
   const binding = bindMotionRig({ motionSkeleton: provider.manifest.skeleton, rig });
   if (binding.status === "unavailable") throw new Error(binding.reason);
   if (provider.manifest.config.framesPerSecond !== MOTION_FRAMES_PER_SECOND) {
@@ -166,7 +167,7 @@ export const openMotionProduction = async (input: {
       fixed: openedFixed.map(({ init }) => init),
       loose: openedLoose.map(({ init }) => init),
     },
-    embeddings,
+    embeddings: promptLibrary.embeddings,
     manifest: provider.manifest,
     program,
     restPose: binding.value.motionRestPose,
