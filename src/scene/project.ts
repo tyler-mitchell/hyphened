@@ -12,6 +12,8 @@ import {
 import { openBrowserProjectDatabase } from "@coretime/project/browser";
 import { type } from "arktype";
 
+import { motionTextEmbedding, type TextEmbedding } from "../provider/embedding";
+import { promptLibrary } from "./prompts";
 import { motionTimelineDeclaration } from "./timeline";
 
 const SceneProjectDefinition = type({
@@ -24,11 +26,24 @@ type SceneProjectDefinition = typeof SceneProjectDefinition.infer;
 
 const SCOPE = { format: "ardy/scene", schemaVersion: 1 } as const;
 const DATABASE = "ardy";
+const EMBEDDING_TABLE = "embedding";
+
+/** One encoded prompt row kept beside the catalog, so a persisted scene's prompts stay admissible. */
+const EmbeddingRecord = type({
+  embedding: "unknown",
+  pace: "number >= 0",
+  prompt: "string > 0",
+});
 
 export interface SceneProject {
   readonly catalog: TimelineProjectCatalog<SceneProjectDefinition>;
   readonly close: () => Promise<void>;
   readonly record: TimelineProjectEntry<SceneProjectDefinition>;
+  /** Keep one encoded prompt with the scene; it is admitted into the library on every open. */
+  readonly saveEmbedding: (input: {
+    readonly embedding: TextEmbedding;
+    readonly pace: number;
+  }) => Promise<void>;
   readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
 }
 
@@ -69,10 +84,32 @@ const createScene = async (catalog: TimelineProjectCatalog<SceneProjectDefinitio
  */
 export const openSceneProject = async (): Promise<SceneProject> => {
   const database = await openBrowserProjectDatabase({
+    additionalTables: [EMBEDDING_TABLE],
     database: DATABASE,
     namespace: "coretime",
     snapshot: { database: "ardy-scene-projects" },
   });
+  const [stored] = await database.client.query<[unknown[]]>(`SELECT * FROM ${EMBEDDING_TABLE}`);
+  for (const row of stored ?? []) {
+    const record = EmbeddingRecord(row);
+    if (record instanceof type.errors) continue;
+    const embedding = motionTextEmbedding.Admission(record.embedding);
+    if (embedding instanceof type.errors) continue;
+    promptLibrary.admit({ embedding, pace: record.pace });
+  }
+  const saveEmbedding: SceneProject["saveEmbedding"] = async (input) => {
+    await database.client.query(
+      `UPSERT type::thing($table, $id) CONTENT { embedding: $embedding, pace: $pace, prompt: $prompt }`,
+      {
+        embedding: input.embedding,
+        id: input.embedding.identity.sha256,
+        pace: input.pace,
+        prompt: input.embedding.prompt,
+        table: EMBEDDING_TABLE,
+      },
+    );
+    await database.persist();
+  };
   const catalog = await openTimelineProjectCatalog({
     admitDefinition: (value): SceneProjectDefinition | undefined => {
       const admitted = SceneProjectDefinition(value);
@@ -98,6 +135,7 @@ export const openSceneProject = async (): Promise<SceneProject> => {
       await database.close();
     },
     record,
+    saveEmbedding,
     timeline: opened.timeline,
   };
 };

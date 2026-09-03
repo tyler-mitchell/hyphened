@@ -1,6 +1,8 @@
 import type { TimelineCompositionChange, TimelineRuntime } from "@coretime/core";
 
 import { PUBLISHED_FRAMES_PER_WINDOW } from "../../provider/generation/layout";
+import { sceneProject } from "../../scene/project";
+import { encodeMotionPrompt } from "../../scene/prompt-encoder";
 import { promptLibrary } from "../../scene/prompts";
 import {
   actorGroupId,
@@ -13,7 +15,12 @@ import {
   sceneCompositionEvents,
 } from "../../scene/composition";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
-import { ListMotionPromptsInput, PromptItemData, SetMotionSpanInput } from "../../schema";
+import {
+  EncodeMotionPromptInput,
+  ListMotionPromptsInput,
+  PromptItemData,
+  SetMotionSpanInput,
+} from "../../schema";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
 type MotionTimeline = TimelineRuntime<typeof motionTimelineDeclaration>;
@@ -71,6 +78,39 @@ export const motionSpanTools = ({
         },
       },
       required: ["prompts"],
+      type: "object",
+    },
+  },
+  {
+    description:
+      "Add a new prompt to the library by encoding a caption with the exact text encoder (a sentence in the training caption style, such as 'A person raises both arms in victory.'). Give the route pace in metres per second the actor should travel under it; zero performs in place. The prompt persists with the scene and set_motion_span accepts it at once. Fails when the encoder service is unreachable; the library prompts still work.",
+    execute: async (raw) => {
+      const input = EncodeMotionPromptInput.assert(raw);
+      const known = promptLibrary.find(input.prompt);
+      const pace = input.pace ?? known?.pace ?? 0;
+      const result = await encodeMotionPrompt(input.prompt).then(
+        (embedding) => ({ embedding }),
+        (cause: unknown) => ({ cause }),
+      );
+      if ("cause" in result) return failure(result.cause);
+      promptLibrary.admit({ embedding: result.embedding, pace });
+      await (await sceneProject()).saveEmbedding({ embedding: result.embedding, pace });
+      return webMcpResult({
+        identity: result.embedding.identity.sha256,
+        pace,
+        prompt: input.prompt,
+      });
+    },
+    inputSchema: webMcpInputSchema(EncodeMotionPromptInput),
+    name: "encode_motion_prompt",
+    outputSchema: {
+      additionalProperties: false,
+      properties: {
+        identity: { type: "string" },
+        pace: { type: "number" },
+        prompt: { type: "string" },
+      },
+      required: ["identity", "pace", "prompt"],
       type: "object",
     },
   },

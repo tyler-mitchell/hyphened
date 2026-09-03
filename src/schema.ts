@@ -440,6 +440,7 @@ export const $ = type.module({
   },
   SceneReadinessInput: {},
   ListMotionPromptsInput: {},
+  EncodeMotionPromptInput: { "pace?": "number >= 0", prompt: "NonEmptyString" },
   PlanarPoint: ["Finite", "Finite"],
   RemoveBodyInput: { id: "NonEmptyString" },
   SetActorPathInput: { actor: "NonEmptyString", path: "PlanarPoint[] >= 1" },
@@ -497,7 +498,12 @@ export const $ = type.module({
     kind: "'artifact'",
     sha256: "NonEmptyString",
   },
-  TextEmbeddingIdentity: "TextEmbeddingArtifactIdentity",
+  /** A row from the exact encoder service; its identity is the digest of its own bytes. */
+  TextEmbeddingEncodedIdentity: {
+    kind: "'encoded'",
+    sha256: "NonEmptyString",
+  },
+  TextEmbeddingIdentity: "TextEmbeddingArtifactIdentity | TextEmbeddingEncodedIdentity",
   TextEmbeddingInput: {
     identity: "TextEmbeddingIdentity",
     prompt: "NonEmptyString",
@@ -828,6 +834,7 @@ export const DEFAULT_SCENE_PRESENTATION = ScenePresentationConfiguration.assert(
 
 export const SetCameraTimelineItemInput = $.CameraTimelineItemInput;
 export const ListMotionPromptsInput = $.ListMotionPromptsInput;
+export const EncodeMotionPromptInput = $.EncodeMotionPromptInput;
 export const RemoveCameraTimelineItemInput = $.RemoveCameraTimelineItemInput;
 export const ControlMotionInput = $.ControlMotionInput;
 export const EditSceneCompositionInput = $.EditSceneCompositionInput;
