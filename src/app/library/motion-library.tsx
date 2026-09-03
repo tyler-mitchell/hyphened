@@ -1,7 +1,7 @@
-// The published UI package carries Button; Badge and Input are not in it, and the public build
-// resolves against that package rather than this workspace. A facet and the search field are a
-// span and an input styled by this file's own slots until the package publishes those two.
-import { Button } from "@hyphened/ui";
+// Both surfaces of this package export the button subpath: the workspace maps ./components/* to
+// source, and the published tarball packs button alone. Badge and Input exist only in the
+// workspace, so a facet and the search field are a span and an input on this file's own slots.
+import { Button } from "@hyphened/ui/components/button";
 import { Library, X } from "lucide-react";
 import { useMemo, useState } from "react";
 

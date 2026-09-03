@@ -3247,7 +3247,7 @@ packages:
         optional: true
 
   webgpu-engine@file:vendor/webgpu-engine-0.0.0-gate-b.tgz:
-    resolution: {integrity: sha512-zaTvSObucT7PJJB/Ebpq0L3TV5AH77S1gJ4XIMLUaIfRNeetdYNe8SEiHwpZ4PR8/VTyyRyP/y239orzSVP+Mg==, tarball: file:vendor/webgpu-engine-0.0.0-gate-b.tgz}
+    resolution: {integrity: sha512-j86ZCda8o0oPLMpVrQq1F9hJhiSwv0mnzzmR8UiwgCUlTDjkA3NFzsr3iPbPIJnMXqHYOhhzTuptHzqWUdsuRA==, tarball: file:vendor/webgpu-engine-0.0.0-gate-b.tgz}
     version: 0.0.0-gate-b
     peerDependencies:
       react: ^19.2.0

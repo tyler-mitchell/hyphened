@@ -72,12 +72,13 @@ export const SceneReadinessTool = ({
     {
       annotations: { idempotentHint: true, readOnlyHint: true },
       description:
-        "Report whether the motion scene has opened, and what the browser's WebGPU support is. While the status is opening, the scene's own operations are not yet registered. A device without WebGPU or without the required shader-f16 feature will never open the scene. A reset field appears when the saved scene was discarded and a new one opened in its place, which is how a fresh browser is told apart from a document that was thrown away.",
+        "Report whether the motion scene has opened, and what the browser's WebGPU support is. While the status is opening, the scene's own operations are not yet registered. A device without WebGPU or without the required shader-f16 feature will never open the scene. A reset field appears when the saved scene was discarded and a new one opened in its place, which is how a fresh browser is told apart from a document that was thrown away. A progress field appears while the motion checkpoint is still downloading, with the bytes received of the total and which shard is arriving; a page that reports progress is working, not stuck, so wait and read again rather than reloading.",
       execute: async () => {
         SceneReadinessInput.assert({});
         return webMcpResult({
           ...readiness,
           device: await readDevice(),
+          ...(progress === undefined ? {} : { progress }),
           ...(reset === undefined ? {} : { reset }),
         });
       },
@@ -94,6 +95,17 @@ export const SceneReadinessTool = ({
               webgpu: { type: "boolean" },
             },
             required: ["adapter", "requiredFeature", "webgpu"],
+            type: "object",
+          },
+          progress: {
+            additionalProperties: false,
+            properties: {
+              loadedBytes: { type: "integer" },
+              shard: { type: "integer" },
+              shardCount: { type: "integer" },
+              totalBytes: { type: "integer" },
+            },
+            required: ["loadedBytes", "shard", "shardCount", "totalBytes"],
             type: "object",
           },
           reason: { type: "string" },

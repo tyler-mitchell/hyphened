@@ -9,7 +9,10 @@ export const motionLibraryStyles = tv({
       "flex h-9 shrink-0 items-center justify-between gap-2 border-b border-[var(--editor-border)] bg-[var(--editor-panel)] px-2.5",
     list: "min-h-0 flex-1 overflow-y-auto overscroll-contain",
     root: "pointer-events-auto absolute top-3 left-3 z-30 flex max-h-[calc(100%-1.5rem)] w-72 flex-col overflow-hidden rounded-[6px] border border-[var(--editor-border)] bg-[var(--editor-panel)]/95 text-[var(--editor-text)] shadow-[0_10px_30px_rgb(0_0_0/0.45)] backdrop-blur-sm",
-    search: "h-7 rounded-[4px] text-[11px]",
+    // The published package carries Button only, so the field is a plain input and this slot owns
+    // every one of its styles rather than leaning on the package's Input.
+    search:
+      "h-7 w-full min-w-0 rounded-[4px] border border-[var(--editor-border)] bg-[var(--editor-canvas)] px-2 text-[11px] text-[var(--editor-text)] outline-none transition-colors placeholder:text-[var(--editor-text-muted)] focus-visible:border-[var(--editor-info)] focus-visible:ring-1 focus-visible:ring-[var(--editor-info)]/50",
     title: "text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--editor-text-secondary)]",
   },
 });
@@ -42,7 +45,7 @@ export const motionLibraryEntryStyles = tv({
  * quiet. Travel reads as a speed, and an in-place caption says so rather than showing a zero.
  */
 export const motionLibraryFacetStyles = tv({
-  base: "h-4 rounded-[3px] border-transparent px-1 font-mono text-[9px] tabular-nums",
+  base: "inline-flex h-4 w-fit shrink-0 items-center rounded-[3px] px-1 font-mono text-[9px] whitespace-nowrap tabular-nums",
   variants: {
     facet: {
       duration: "bg-white/[0.05] text-[var(--editor-text-muted)]",

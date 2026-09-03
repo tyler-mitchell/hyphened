@@ -164,7 +164,7 @@ export const motionSpanTools = ({
   },
   {
     description:
-      "Add a new prompt to the library by encoding a caption with the exact text encoder (a sentence in the training caption style, such as 'A person raises both arms in victory.'). Give the route pace in metres per second the actor should travel under it; zero performs in place. The prompt persists with the scene and set_motion_span accepts it at once. Fails when the encoder service is unreachable; the library prompts still work.",
+      "Add a new prompt to the library by encoding a caption with the exact text encoder (a sentence in the training caption style, such as 'A person raises both arms in victory.'). Give the route pace in metres per second the actor should travel under it; zero performs in place. The prompt persists with the scene and set_motion_span accepts it at once. When the encoder service is unreachable it fails and says so; the 75 library captions still work, so call list_motion_prompts and use the nearest one.",
     execute: async (raw) => {
       const input = EncodeMotionPromptInput.assert(raw);
       const known = promptLibrary.find(input.prompt);
@@ -173,7 +173,17 @@ export const motionSpanTools = ({
         (embedding) => ({ embedding }),
         (cause: unknown) => ({ cause }),
       );
-      if ("cause" in result) return failure(result.cause);
+      // The encoder is a separate GPU service and can be unreachable. Saying so alone ends the
+      // agent's workflow; naming the recovery keeps it going on the captions already present.
+      if ("cause" in result) {
+        return failure(
+          new Error(
+            `The text encoder is unreachable, so this caption cannot be added: ${
+              result.cause instanceof Error ? result.cause.message : String(result.cause)
+            }. The library still works: call list_motion_prompts to see its facets, pick the nearest caption, and use that with set_motion_span or author_scene.`,
+          ),
+        );
+      }
       promptLibrary.admit({ embedding: result.embedding, pace });
       await (await sceneProject()).saveEmbedding({ embedding: result.embedding, pace });
       return webMcpResult({

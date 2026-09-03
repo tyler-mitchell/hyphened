@@ -1,5 +1,6 @@
 import { tv } from "@hyphened/ui/tv";
 import { useCallback, useEffect, useState } from "react";
+import type { MotionParameterProgress } from "webgpu-engine/motion";
 import { WebGpuCanvas, useEngine, type WebGpuCanvasSessionFactory } from "webgpu-engine/react";
 
 import { MotionAgentObservability } from "./authoring/motion-agent-observability";
@@ -31,8 +32,17 @@ const sceneStyles = tv({
     timeline: "flex h-72 shrink-0 flex-col",
     failure: "m-auto max-w-prose p-6 font-mono text-sm text-red-700",
     notice: "m-auto max-w-prose p-6 text-center text-base leading-relaxed text-slate-700",
+    // Over the stage, because the canvas has mounted and is empty while the checkpoint streams.
+    loading:
+      "pointer-events-none absolute inset-x-0 top-1/2 z-10 mx-auto w-max max-w-sm -translate-y-1/2 rounded-lg bg-white/90 px-6 py-4 text-center text-sm text-slate-700 shadow-lg",
+    loadingDetail: "mt-1 text-xs text-slate-500",
+    loadingTrack: "mt-3 h-1 w-full overflow-hidden rounded-full bg-slate-300",
+    loadingBar: "h-full rounded-full bg-slate-600 transition-[width] duration-300",
   },
 });
+
+/** Whole megabytes, the unit a download reads in. */
+const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(0);
 
 /** The failure with its cause chain: a wrapped step failure names what failed. */
 const describeFailure = (cause: unknown): string =>
@@ -80,6 +90,9 @@ export const App = () => {
   // What this browser can offer. Undefined until the probe answers, so the canvas waits rather
   // than mounting a session that a browser without the required feature cannot open.
   const [device, setDevice] = useState<SceneDevice>();
+  // The checkpoint is 380 MB and streams inside the canvas session, after the canvas has mounted.
+  // The shell outlives that session, so the shell holds the count and shows it over the stage.
+  const [progress, setProgress] = useState<MotionParameterProgress>();
   useEffect(() => {
     const mount = { live: true };
     void readDevice().then((probed) => {
@@ -102,6 +115,7 @@ export const App = () => {
     const unobserve = observeSceneProject((next) => {
       if (!mount.live) return;
       setReadiness({ status: "opening" });
+      setProgress(undefined);
       setProject(next);
     });
     return () => {
@@ -109,7 +123,10 @@ export const App = () => {
       unobserve();
     };
   }, []);
-  const opened = useCallback(() => setReadiness({ status: "open" }), []);
+  const opened = useCallback(() => {
+    setReadiness({ status: "open" });
+    setProgress(undefined);
+  }, []);
   // The switch replaces the project, so the canvas and every control inside it unmount. Only the
   // shell outlives that, so the shell owns the outcome: a switch that never reaches a scene is
   // reported here instead of dying with the control that asked for it.
@@ -129,7 +146,11 @@ export const App = () => {
     timeline,
   }) => {
     const held = await sceneProject();
-    const session = await openMotionProduction({ story: held.record.definition.story, timeline });
+    const session = await openMotionProduction({
+      onProgress: setProgress,
+      story: held.record.definition.story,
+      timeline,
+    });
     // The session held this run; when the session closes, the run closes with it.
     return {
       ...session,
@@ -142,8 +163,28 @@ export const App = () => {
 
   return (
     <main className={styles.root()}>
-      <SceneReadinessTool readiness={readiness} reset={project?.reset} />
+      <SceneReadinessTool progress={progress} readiness={readiness} reset={project?.reset} />
       {unsupported === undefined ? null : <p className={styles.notice()}>{unsupported}</p>}
+      {progress === undefined || readiness.status !== "opening" ? null : (
+        <div className={styles.loading()}>
+          <p>
+            Loading the motion model, {megabytes(progress.loadedBytes)} MB of{" "}
+            {megabytes(progress.totalBytes)} MB.
+          </p>
+          <p className={styles.loadingDetail()}>
+            Part {progress.shard} of {progress.shardCount}. Your browser keeps it for the next
+            visit.
+          </p>
+          <div className={styles.loadingTrack()}>
+            <div
+              className={styles.loadingBar()}
+              style={{
+                width: `${String(Math.round((progress.loadedBytes / progress.totalBytes) * 100))}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
       {readiness.status === "failed" && unsupported === undefined ? (
         <p className={styles.failure()}>The scene did not open: {readiness.reason}</p>
       ) : null}
