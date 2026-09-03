@@ -21,7 +21,6 @@ export const ONE_MOTION_FRAME = { motionFrame: 1 } as const;
 export const DEFAULT_TEMPORAL_SHEET_COLUMNS = 4;
 export const MOTION_DRIVER_POLICY = {
   maxStepsPerAdvance: 2,
-  onStepLimitExceeded: "drop",
 } as const;
 
 export const $ = type.module({
