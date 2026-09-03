@@ -20,9 +20,10 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { content: "width=device-width, initial-scale=1", name: "viewport" },
-      { title: "ARDY · WebGPU Motion Synthesis" },
+      { title: "Ardy · a scene an agent can direct" },
       {
-        content: "Interactive WebGPU execution of NVIDIA's released streaming motion model.",
+        content:
+          "Learned human motion on WebGPU, authored through WebMCP: an agent reads the scene, writes the story, cuts the camera, and captures the result.",
         name: "description",
       },
     ],
