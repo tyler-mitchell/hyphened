@@ -8,6 +8,8 @@
     "build": "vp build",
     "check": "vp check",
     "preview": "ARDY_MODEL_ROOT=${ARDY_MODEL_ROOT:-.data/models} vp preview",
+    "release": "npx --yes netlify-cli deploy --prod --build",
+    "release:draft": "npx --yes netlify-cli deploy --build",
     "prepare:assets": "tsx scripts/prepare-core-assets.ts",
     "start": "ARDY_MODEL_ROOT=${ARDY_MODEL_ROOT:-.data/models} node .output/server/index.mjs"
   },
