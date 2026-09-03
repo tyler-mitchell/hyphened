@@ -1,5 +1,12 @@
 packages: []
 
+# ArkType must be one runtime in this app. The app builds its schema module by spreading the
+# engine's exported scope into its own, so a second copy makes a type reference resolve against the
+# wrong registry: `Vector3` came back as a two-tuple and every scene refused to open. The engine's
+# package pins an exact patch, which is what split it, so the override collapses them to one.
+overrides:
+  arktype: 2.2.3
+
 allowBuilds:
   esbuild: true
   msgpackr-extract: true

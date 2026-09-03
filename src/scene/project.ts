@@ -82,6 +82,8 @@ export interface SceneStoryChoice {
 const createScene = async (
   catalog: TimelineProjectCatalog<SceneProjectDefinition>,
   choice: SceneStoryChoice,
+  /** Why the catalog last refused a definition, so a refusal names its cause instead of hiding it. */
+  refusal?: () => string | undefined,
 ) => {
   const definition = {
     format: "ardy/scene",
@@ -92,7 +94,14 @@ const createScene = async (
     title: choice.story.title,
   } as const;
   const record = await catalog.create({ definition, run: `ardy:scene:${definition.id}` });
-  if (record === undefined) throw new Error("The scene project could not be created.");
+  if (record === undefined) {
+    const reason = refusal?.();
+    throw new Error(
+      reason === undefined
+        ? "The scene project could not be created."
+        : `The scene project could not be created: ${reason}`,
+    );
+  }
   await catalog.setActive({ project: definition.id });
   return record;
 };
@@ -134,18 +143,24 @@ const openSceneCatalog = async () => {
   // The catalog refuses an entry it cannot admit and says so through this hook. A refusal during a
   // read is the difference between a fresh browser and a saved scene that was just discarded, and
   // the two look identical from the record alone.
-  const refused = { entry: false };
+  // The admission error is the only account of why a definition was refused; the catalog reports
+  // that a refusal happened but never what failed, so it is kept here and named in the failure.
+  const refused: { entry: boolean; reason?: string } = { entry: false };
   const catalog = await openTimelineProjectCatalog({
     admitDefinition: (value): SceneProjectDefinition | undefined => {
       const admitted = SceneProjectDefinition(value);
-      return admitted instanceof type.errors ? undefined : admitted;
+      if (admitted instanceof type.errors) {
+        refused.reason = admitted.summary;
+        return undefined;
+      }
+      return admitted;
     },
     database: database.client,
     persist: database.persist,
     scope: SCOPE,
     warn: ({ cause, message }) => {
       refused.entry = true;
-      console.warn(message, cause);
+      console.warn(message, refused.reason ?? cause);
     },
   });
   /** The active record, and whether the catalog refused a stored one to arrive at none. */
@@ -204,7 +219,7 @@ const openSceneCatalog = async () => {
       timeline,
     };
   };
-  return { activeRecord, catalog, openRecord };
+  return { activeRecord, catalog, openRecord, refusal: () => refused.reason };
 };
 
 const owner: {
@@ -239,10 +254,10 @@ const CHANGED_STORY =
  * fresh browser and a discarded scene are different facts that otherwise look the same.
  */
 export const sceneProject = (): Promise<SceneProject> => {
-  owner.opening ??= sceneCatalog().then(async ({ activeRecord, catalog, openRecord }) => {
+  owner.opening ??= sceneCatalog().then(async ({ activeRecord, catalog, openRecord, refusal }) => {
     const { discarded, record } = await activeRecord();
     if (record === undefined) {
-      const fresh = await createScene(catalog, defaultChoice());
+      const fresh = await createScene(catalog, defaultChoice(), refusal);
       return openRecord(fresh, discarded ? DISCARDED_SCENE : undefined);
     }
     const seed =
@@ -251,7 +266,11 @@ export const sceneProject = (): Promise<SceneProject> => {
       seed !== undefined &&
       (await authoredStoryIdentity(seed)) !== (await authoredStoryIdentity(record.definition.story));
     if (!stale) return openRecord(record);
-    const reseeded = await createScene(catalog, { seed: record.definition.seed, story: seed });
+    const reseeded = await createScene(
+      catalog,
+      { seed: record.definition.seed, story: seed },
+      refusal,
+    );
     return openRecord(reseeded, CHANGED_STORY);
   });
   return owner.opening;
@@ -263,17 +282,31 @@ export const observeSceneProject = (observer: (project: SceneProject) => void): 
   return () => owner.observers.delete(observer);
 };
 
+const activateSceneProject = (project: SceneProject): SceneProject => {
+  owner.opening = Promise.resolve(project);
+  owner.observers.forEach((observer) => observer(project));
+  return project;
+};
+
+/** Open one existing scene document from the durable catalog. */
+export const openSceneProject = async (project: string): Promise<SceneProject> => {
+  const { catalog, openRecord } = await sceneCatalog();
+  const record = await catalog.open({ project });
+  if (record === undefined) throw new Error(`The scene project "${project}" does not exist.`);
+  await catalog.setActive({ project });
+  return activateSceneProject(await openRecord(record));
+};
+
 /**
  * Start a fresh scene in place: a new project becomes active and opens on its own run, and the
  * observers (the canvas session) move to it. The previous run is released by the session that
  * held it, once that session has closed.
  */
 export const startNewScene = async (choice?: SceneStoryChoice): Promise<SceneProject> => {
-  const { catalog, openRecord } = await sceneCatalog();
-  const next = await openRecord(await createScene(catalog, choice ?? defaultChoice()));
-  owner.opening = Promise.resolve(next);
-  owner.observers.forEach((observer) => observer(next));
-  return next;
+  const { catalog, openRecord, refusal } = await sceneCatalog();
+  return activateSceneProject(
+    await openRecord(await createScene(catalog, choice ?? defaultChoice(), refusal)),
+  );
 };
 
 // Database and timeline ownership cannot move across a hot module replacement.
