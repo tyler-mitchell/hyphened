@@ -12,24 +12,11 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "paths": {
-      "@coretime/core": ["../../packages/core-time/src/index.ts"],
-      "@coretime/editor": ["../../packages/core-time-editor/src/index.ts"],
-      "@coretime/core/react": ["../../packages/core-time/src/react.ts"],
-      "@coretime/core/indexeddb": ["../../packages/core-time/src/indexeddb.ts"],
-      "@coretime/project": ["../../packages/core-time-project/src/index.ts"],
-      "@coretime/project/browser": ["../../packages/core-time-project/src/browser.ts"],
-      "webgpu-engine": ["../../packages/webgpu-engine/src/index.ts"],
-      "webgpu-engine/motion": ["../../packages/webgpu-engine/src/motion.ts"],
-      "webgpu-engine/motion/node": ["../../packages/webgpu-engine/src/motion-node.ts"],
-      "webgpu-engine/react": ["../../packages/webgpu-engine/src/react.tsx"],
-      "webgpu-engine/witness": ["../../packages/webgpu-engine/src/witness-engine.ts"]
-    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
     "types": ["vite/client", "@webgpu/types", "node"]
   },
-  "include": ["scripts", "src", "tests"]
+  "include": ["scripts", "src"]
 }

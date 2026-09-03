@@ -4,31 +4,26 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev",
-    "encode:prompt": "tsx scripts/materialize-motion-prompt.ts",
-    "export:runtime-checkpoint": "tsx scripts/export-runtime-checkpoint.ts",
-    "export:upstream-oracle": "tsx scripts/export-upstream-neural-oracle.ts",
     "build": "vp build",
     "check": "vp check",
     "preview": "vp preview",
     "prepare:assets": "tsx scripts/prepare-core-assets.ts",
-    "start": "node .output/server/index.mjs",
-    "test": "vp test run",
-    "text-encoder": "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .runtime/ardy/.venv/bin/python .runtime/ardy/scripts/run_text_encoder_server.py --host 127.0.0.1 --port 9550 --device cpu --tmp-folder .runtime/text-encoder-output"
+    "start": "node .output/server/index.mjs"
   },
   "dependencies": {
     "@base-ui/react": "catalog:",
-    "@coretime/core": "workspace:*",
-    "@coretime/editor": "workspace:*",
-    "@coretime/project": "workspace:*",
-    "@hyphened/ui": "workspace:*",
+    "@coretime/core": "file:./vendor/coretime-core-0.0.0-gate-b2.tgz",
+    "@coretime/editor": "file:./vendor/coretime-editor-0.0.0-gate-b2.tgz",
+    "@coretime/project": "file:./vendor/coretime-project-0.0.0-gate-c.tgz",
+    "@hyphened/ui": "file:./vendor/hyphened-ui-0.0.0-gate-b2.tgz",
     "@legendapp/state": "catalog:",
     "@mcp-b/global": "catalog:",
     "@mcp-b/webmcp-types": "catalog:",
-    "@surrealdb/wasm": "workspace:*",
+    "@surrealdb/wasm": "file:./vendor/surrealdb-wasm-3.0.4.tgz",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-start": "^1.167.42",
     "arktype": "catalog:",
-    "arktype-adapters": "workspace:*",
+    "arktype-adapters": "file:./vendor/arktype-adapters-0.0.0-gate-b2.tgz",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -36,7 +31,7 @@
     "tailwindcss": "catalog:",
     "typegpu": "catalog:",
     "use-sync-external-store": "catalog:",
-    "webgpu-engine": "workspace:*"
+    "webgpu-engine": "file:./vendor/webgpu-engine-0.0.0-gate-b.tgz"
   },
   "devDependencies": {
     "@gradio/client": "catalog:",
@@ -50,16 +45,12 @@
     "fflate": "catalog:",
     "nitro": "catalog:",
     "npyjs": "catalog:",
-    "playwright": "catalog:",
     "sharp": "catalog:",
     "tsx": "catalog:",
-    "typegpu-devtools": "workspace:*",
     "typescript": "catalog:",
     "unplugin-typegpu": "catalog:",
     "vite": "catalog:",
-    "vite-browser-console": "workspace:*",
     "vite-plus": "catalog:",
-    "vitest": "catalog:",
     "wgpu-matrix": "catalog:"
   }
 }
