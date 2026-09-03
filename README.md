@@ -56,20 +56,28 @@ All tools register from the top-level document with `document.modelContext.regis
 | `control_motion_scene` | control | Play, pause, seek, step, rate, restart, or start a new scene on a built-in story (The Victor, The Reunion, Dance-Off) |
 | `capture_motion_temporal_sheet` | read | A labeled contact sheet from the live renderer at exact frames |
 
+The page also carries its own agent panel, so a judge whose browser has no WebMCP client still reaches this surface. It reads the registered tools from the same context and calls the same `execute` functions; it is another caller of the product's tools, not a second path to them.
+
 Agent commits carry an author in their transaction identity, `agent/<tool>/<uuid>`, and the timeline header shows the last authored transactions live. The authored scene persists in the browser across reloads: a project catalog in SurrealDB WASM holds the scene document and the encoded prompts, and every open seeds a fresh Core Time run from it. Undo and the authorship trail span the page session.
 
 ## Try it
 
-Open the live URL in Chrome 149 or later with WebMCP enabled at `chrome://flags/#enable-webmcp-testing`, or in ChatGPT's in-app browser with Site tools on. The scene needs WebGPU with `shader-f16`; the readiness tool reports both.
+Open the live URL in any desktop browser with WebGPU and `shader-f16`, which desktop Chrome has. The page tells you if something is missing.
 
-1. Wait for the model to load. The timeline and the read tools are available while it loads. The scene opens on The Victor: two actors face each other, a charge, a punch, a collapse, a victory, seven cuts.
+There are two ways to reach the tools, and you do not have to configure anything for the first.
+
+**The agent panel, no setup.** The panel at the bottom right runs a model against the page's own registered tools and shows every call with its input and result. Bring your own Anthropic or OpenAI key; it stays in your browser, is used for that one request, and is never stored by this site.
+
+**Your own WebMCP client.** Chrome 149 or later with `chrome://flags/#enable-webmcp-testing` enabled, or ChatGPT's in-app browser with Site tools on. The page's tools then appear to your own agent, and Chrome DevTools, Application panel, WebMCP pane lists them and records every call.
+
+1. Wait for the model to load; it streams about 380 MB and shows its progress. The timeline and the read tools work while it loads. The scene opens on The Victor: two actors face each other, a charge, a punch, a collapse, a victory, seven cuts.
 2. Ask the agent: "Read the scene."
 3. Ask: "Cover the collapse with a crane shot on the second actor." The camera track changes and the stage cuts to it.
 4. Ask: "Show me a contact sheet of the second actor around the collapse."
 5. Ask: "Write a new scene: one actor walks in, bows, dances, and salutes, with a close-up on the bow." The agent calls `author_scene` and the scene opens on it.
 6. Ask: "Undo that."
 
-Chrome DevTools, Application panel, WebMCP pane, lists the tools and every call with its input and result.
+Every change an agent makes is a versioned transaction in the same history the person edits, and the timeline shows the last authored transactions live.
 
 ## Run it yourself
 
