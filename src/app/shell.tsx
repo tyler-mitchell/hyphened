@@ -192,6 +192,14 @@ export const App = () => {
   return (
     <main className={styles.root()}>
       <SceneReadinessTool progress={progress} readiness={readiness} reset={project?.reset} />
+      {/*
+        Outside the canvas, because the canvas is exactly what a visitor without shader-f16 does not
+        get. The panel exists so a browser with no WebMCP client can still call the page's tools, and
+        that browser is usually the same one that cannot run the scene; mounting it inside the canvas
+        withheld it from every visitor who needed it. It reads the tools from the WebMCP surface, so
+        it needs no engine.
+      */}
+      <AgentPanel />
       {unsupported === undefined ? null : <p className={styles.notice()}>{unsupported}</p>}
       {progress === undefined || readiness.status !== "opening" ? null : (
         <div className={styles.loading()}>
@@ -227,7 +235,6 @@ export const App = () => {
           <SceneOpened onOpen={opened} />
           <MotionAgentObservability />
           <MotionLibraryPanel />
-          <AgentPanel />
           <div className={styles.letterbox({ className: "top-0" })} />
           <div className={styles.letterbox({ className: "bottom-72" })} />
           <div className={styles.timeline()}>
