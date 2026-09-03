@@ -23,8 +23,12 @@ import {
   type MotionProduct,
 } from "../motion/product";
 import {
+  BODY_POOL_SPARE,
   MOTION_FRAMES_PER_SECOND,
   MotionActorBinding,
+  PHYSICS_RETIRE_SCHEDULE,
+  PHYSICS_SPAWN_SCHEDULE,
+  PHYSICS_STATIC_UPDATE_SCHEDULE,
   PHYSICS_SUBSTEP_CLOCK,
   type MotionPresentationProgram,
   type MotionSubjectDefinition,
@@ -36,18 +40,29 @@ const CHARACTER_HALF_EXTENTS = [0.22, 0.85, 0.22] as const;
 const SLAB_HALF_EXTENT = 200;
 
 export interface MotionBodies {
-  /** Pool rows, in order: one kinematic box per actor, the ground slab, then the scene's bodies. */
+  /**
+   * Body table rows, in order: one kinematic box per actor, the ground slab, the scene's loose
+   * bodies, the spare pool rows, then the fixed bodies as static colliders with their spare rows.
+   * Rows without a body draw nothing.
+   */
   readonly bodyCount: number;
   readonly capabilities: ReadonlyArray<SystemGraphCapability>;
 }
 
+/** A reserved static collider row with no extent, far below the slab, until a fixed body takes it. */
+const FREE_STATIC_COLLIDER = { halfExtents: [0, 0, 0], position: [0, -1000, 0] } as const;
+
 /**
  * Tier one of motion and physics: each actor's learned pose drives a kinematic box that the solver
  * sees as a moving collider. The solver owns every contact and every dynamic response; the actor
- * owns only its trajectory. The scene's bodies stand around the actors.
+ * owns only its trajectory. The scene's loose bodies are pool rows; its fixed bodies are static
+ * colliders, which the engine moves, resizes, and clears in place through one update schedule.
  */
 export const createMotionBodies = (input: {
-  readonly bodies: ReadonlyArray<PhysicsBodyInit>;
+  readonly bodies: {
+    readonly fixed: ReadonlyArray<PhysicsBodyInit>;
+    readonly loose: ReadonlyArray<PhysicsBodyInit>;
+  };
   readonly clock: SystemCapabilityExportReference<UniformResourceSpec<typeof TimelineClockUniform>>;
   readonly ground: { readonly height: number };
   readonly id: string;
@@ -74,14 +89,26 @@ export const createMotionBodies = (input: {
       hidden: true,
       position: [0, input.ground.height - 0.5, 0],
     },
-    ...input.bodies,
+    ...input.bodies.loose,
+  ];
+  const capacity = rows.length + BODY_POOL_SPARE;
+  const colliders = [
+    ...input.bodies.fixed.map(({ halfExtents, position }) => ({ halfExtents, position })),
+    ...Array.from({ length: BODY_POOL_SPARE }, () => FREE_STATIC_COLLIDER),
   ];
   const physics = createPhysicsCapability({
     after: input.phase,
     bodies: rows,
+    capacity,
     id: PHYSICS_ID,
     iterations: 4,
     kinematics: { capacity: actorCount, source: "device" },
+    retires: { capacity: BODY_POOL_SPARE, scheduleKind: PHYSICS_RETIRE_SCHEDULE },
+    spawns: { capacity: BODY_POOL_SPARE, scheduleKind: PHYSICS_SPAWN_SCHEDULE },
+    staticColliders: {
+      colliders,
+      updates: { capacity: colliders.length, scheduleKind: PHYSICS_STATIC_UPDATE_SCHEDULE },
+    },
     substepClock: PHYSICS_SUBSTEP_CLOCK,
   });
   const producer = defineGraphCapability({
@@ -197,5 +224,5 @@ export const createMotionBodies = (input: {
       };
     },
   });
-  return { bodyCount: rows.length, capabilities: [producer, physics] };
+  return { bodyCount: capacity + colliders.length, capabilities: [producer, physics] };
 };

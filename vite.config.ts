@@ -41,6 +41,11 @@ export default {
   lint: {
     ignorePatterns: ["**/.nitro/**", "**/.output/**", "**/.tanstack/**", "**/node_modules/**"],
   },
+  nitro: {
+    routeRules: {
+      "/**": { headers: { "Origin-Agent-Cluster": "?1" } },
+    },
+  },
   optimizeDeps: {
     exclude: [
       "@surrealdb/wasm",
@@ -86,6 +91,13 @@ export default {
     host: "127.0.0.1",
     port: 5193,
     strictPort: true,
+    forwardConsole: {
+      unhandledErrors: true,
+      logLevels: ["error", "warn"],
+    },
+    fs: {
+      // allow: [searchForWorkspaceRoot(examplesRoot)],
+    },
   },
   test: {
     projects: [

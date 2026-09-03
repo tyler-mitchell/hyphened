@@ -146,22 +146,35 @@ const pointAlongPath = (
   return walked.point;
 };
 
-export const authoredRootConstraints = (row: number): readonly AuthoredRootConstraint[] => {
-  const spans = authoredPromptSpans(row);
-  const path = authoredScene(row).path;
-  // Vertices sit half an interval off the window grid (frames 10, 30, 50, ...). A vertex on a
-  // window's first generated frame would snap that frame onto the timetable regardless of where
-  // the history ended; half an interval in, the model has frames to reach it.
+/**
+ * The route an actor's path and prompt spans lower to: a timed planar vertex every second, each
+ * the point along the path at the distance the spans' paces have covered by then. Vertices sit
+ * half an interval off the window grid (frames 10, 30, 50, ...). A vertex on a window's first
+ * generated frame would snap that frame onto the timetable regardless of where the history
+ * ended; half an interval in, the model has frames to reach it.
+ */
+export const routeConstraints = (input: {
+  readonly frameCount: number;
+  readonly path: ReadonlyArray<readonly [number, number]>;
+  readonly spans: readonly AuthoredPromptSpan[];
+}): readonly AuthoredRootConstraint[] => {
   const ticks = Array.from(
-    { length: Math.ceil((SCENE_SPAN_FRAMES - 1) / WAYPOINT_INTERVAL_FRAMES) },
+    { length: Math.ceil((input.frameCount - 1) / WAYPOINT_INTERVAL_FRAMES) },
     (_unused, waypoint) =>
-      Math.min((waypoint + 0.5) * WAYPOINT_INTERVAL_FRAMES, SCENE_SPAN_FRAMES - 1),
+      Math.min((waypoint + 0.5) * WAYPOINT_INTERVAL_FRAMES, input.frameCount - 1),
   );
   return ticks.map((tick) => {
-    const [x, z] = pointAlongPath(path, distanceAt(spans, tick));
+    const [x, z] = pointAlongPath(input.path, distanceAt(input.spans, tick));
     return { constraint: { position: [Math.fround(x), Math.fround(z)] }, tick };
   });
 };
+
+export const authoredRootConstraints = (row: number): readonly AuthoredRootConstraint[] =>
+  routeConstraints({
+    frameCount: SCENE_SPAN_FRAMES,
+    path: authoredScene(row).path,
+    spans: authoredPromptSpans(row),
+  });
 
 /**
  * The bodies each actor's story asks for, each standing where the actor's route is at a frame

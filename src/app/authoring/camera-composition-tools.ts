@@ -31,7 +31,7 @@ const commitCameraChange = async (input: {
   const preview = await input.timeline.composition.preview({ changes: [input.change] });
   const committed = await input.timeline.composition.commit({
     events: sceneCompositionEvents,
-    id: crypto.randomUUID(),
+    id: `agent/camera/${crypto.randomUUID()}`,
     proposal: preview.proposal,
   });
   await input.synchronize();

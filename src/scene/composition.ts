@@ -28,6 +28,8 @@ export const SCENE_COMPOSITION = "scene";
 export const MOTION_PROMPT_EVENT = "motion/prompt" as const;
 export const MOTION_ACTOR_EVENT = "motion/actor" as const;
 export const MOTION_ROUTE_EVENT = "motion/route" as const;
+/** A body on the body track was added, changed, or removed; the subject is the body's item id. */
+export const MOTION_BODY_EVENT = "motion/body" as const;
 
 export const compositionRevision = (version: TimelineCompositionVersion): string =>
   version.kind === "declaration"
@@ -329,15 +331,27 @@ export const sceneCompositionEvents: TimelineCompositionEventResolver<
 > = (context) => {
   const afterScene = SceneComposition.assert(context.after.compositions[SCENE_COMPOSITION]);
   const beforeComposition = context.before.compositions[SCENE_COMPOSITION];
-  const beforeActors =
-    beforeComposition === undefined ? [] : SceneComposition.assert(beforeComposition).actors;
-  const before = new Map(beforeActors.map((actor) => [actor.subject, actor]));
+  const beforeScene =
+    beforeComposition === undefined ? undefined : SceneComposition.assert(beforeComposition);
+  const before = new Map((beforeScene?.actors ?? []).map((actor) => [actor.subject, actor]));
   const after = new Map(afterScene.actors.map((actor) => [actor.subject, actor]));
   const edited = [...after].filter(
     ([subject, actor]) =>
       before.has(subject) && JSON.stringify(before.get(subject)) !== JSON.stringify(actor),
   );
+  const bodiesBefore = new Map((beforeScene?.bodies ?? []).map((body) => [body.id, body]));
+  const bodiesAfter = new Map(afterScene.bodies.map((body) => [body.id, body]));
+  const bodyIds = new Set([...bodiesBefore.keys(), ...bodiesAfter.keys()]);
   return [
+    ...[...bodyIds]
+      .filter(
+        (id) => JSON.stringify(bodiesBefore.get(id)) !== JSON.stringify(bodiesAfter.get(id)),
+      )
+      .map((id): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
+        kind: MOTION_BODY_EVENT,
+        payload: { id },
+        subject: id,
+      })),
     ...edited.map(([subject]): TimelineCompositionEventInput<typeof motionTimelineDeclaration> => ({
       kind: MOTION_ROUTE_EVENT,
       payload: { subject },

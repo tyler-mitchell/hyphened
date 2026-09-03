@@ -146,7 +146,8 @@ export const motionSpanTools = ({
         .then((preview) =>
           timeline.composition.commit({
             events: sceneCompositionEvents,
-            id: crypto.randomUUID(),
+            // The transaction identity names its author so history reads who made each change.
+            id: `agent/set_motion_span/${crypto.randomUUID()}`,
             proposal: preview.proposal,
           }),
         )

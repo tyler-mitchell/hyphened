@@ -1,6 +1,7 @@
 import tgpu, { d, std } from "typegpu";
 import {
   Body,
+  BODY_FLAG_ALIVE,
   BODY_FLAG_HIDDEN,
   BODY_FLAG_STATIC,
   capabilityResourceKey,
@@ -184,7 +185,12 @@ const crateVertex = tgpu.vertexFn({
   const body = crateBindings.$.bodies[instanceIndex];
   const pose = interpolateBodyPose(body, crateBindings.$.previousBodies[instanceIndex], true);
   const shape = crateBindings.$.shapes[body.shapeOffset];
-  const visual = std.select(d.f32(1), d.f32(0), (body.flags & d.u32(BODY_FLAG_HIDDEN)) !== 0);
+  // A retired or cleared row keeps its last extent; only an alive, visible body draws.
+  const visual = std.select(
+    d.f32(0),
+    d.f32(1),
+    (body.flags & d.u32(BODY_FLAG_ALIVE | BODY_FLAG_HIDDEN)) === d.u32(BODY_FLAG_ALIVE),
+  );
   const corner = cubeCorners.$[vertexIndex];
   const scaled = d.vec3f(
     corner.x * shape.halfExtents.x * visual,

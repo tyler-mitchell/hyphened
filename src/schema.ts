@@ -76,7 +76,11 @@ export const $ = type.module({
   EditSceneCompositionInput: {
     changes: "SceneCompositionChange[] >= 1",
     summary: "1 <= string <= 160",
-    transactionId: ["string >= 1", "=", () => crypto.randomUUID()],
+    transactionId: [
+      "string >= 1",
+      "=",
+      () => `agent/edit_scene_composition/${crypto.randomUUID()}`,
+    ],
   },
   Finite: type("number").narrow(Number.isFinite),
   FiniteF32: type("number").narrow(
@@ -268,10 +272,13 @@ export const $ = type.module({
   MotionRequest: {
     id: "NonEmptyString",
     product: "MotionProductSpecification",
+    /** Where the product's frames begin in the shared product ring. */
     productFrameStart: "U32",
     revision: "U32",
     subject: "NonEmptyString",
     subjectGeneration: "U32",
+    /** The subject's timeline frame at which this request begins; frames before it are history. */
+    timelineFrameStart: ["U32", "=", 0],
   },
   MotionSubjectStateInput: { active: "boolean", generation: "U32", subject: "NonEmptyString" },
   MotionSubjectDefinition: {
@@ -329,6 +336,7 @@ export const $ = type.module({
     },
   },
   ReadSceneCompositionInput: { "composition?": "string >= 1" },
+  ReadSceneSummaryInput: {},
   ReadonlyVector3: type(["number", "number", "number"])
     .narrow((value) => value.every(Number.isFinite))
     .readonly(),
@@ -402,7 +410,7 @@ export const $ = type.module({
   SceneCompositionInput: { children: "unknown[]", clock: "'motionFrame'" },
   SceneHistoryInput: {
     action: "'undo' | 'redo'",
-    transactionId: ["string >= 1", "=", () => crypto.randomUUID()],
+    transactionId: ["string >= 1", "=", () => `agent/history/${crypto.randomUUID()}`],
   },
   SceneLookCameraShot: { label: "string >= 1", mode: "'look-at'", position: "Vector3" },
   SceneOrbitCameraShot: {
@@ -425,6 +433,18 @@ export const $ = type.module({
     camera: "ScenePresentationCamera",
   },
   SceneReadinessInput: {},
+  PlanarPoint: ["Finite", "Finite"],
+  RemoveBodyInput: { id: "NonEmptyString" },
+  SetActorPathInput: { actor: "NonEmptyString", path: "PlanarPoint[] >= 1" },
+  SetBodyInput: {
+    elevation: "number >= 0",
+    halfExtents: "ReadonlyVector3",
+    "id?": "NonEmptyString",
+    label: "string >= 1",
+    mass: "number >= 0",
+    subject: "NonEmptyString",
+    tick: "U32",
+  },
   SetMotionSpanInput: {
     actor: "NonEmptyString",
     durationFrames: "number.integer > 0",
@@ -798,11 +818,26 @@ export const RemoveCameraTimelineItemInput = $.RemoveCameraTimelineItemInput;
 export const ControlMotionInput = $.ControlMotionInput;
 export const EditSceneCompositionInput = $.EditSceneCompositionInput;
 export const ReadSceneCompositionInput = $.ReadSceneCompositionInput;
+export const ReadSceneSummaryInput = $.ReadSceneSummaryInput;
 export const SceneAtInput = $.SceneAtInput;
 export const SceneHistoryInput = $.SceneHistoryInput;
 export const SceneReadinessInput = $.SceneReadinessInput;
 export const SceneWindowInput = $.SceneWindowInput;
 export const SetMotionSpanInput = $.SetMotionSpanInput;
+export const SetActorPathInput = $.SetActorPathInput;
+export const SetBodyInput = $.SetBodyInput;
+export const RemoveBodyInput = $.RemoveBodyInput;
+
+/**
+ * Schedules the physics capability consumes for bodies placed, changed, or removed after the
+ * scene opens. Loose bodies spawn into and retire from pool rows; fixed bodies are static
+ * colliders whose pose, extent, and presence one update schedule changes in place.
+ */
+export const PHYSICS_SPAWN_SCHEDULE = "physics/spawn";
+export const PHYSICS_RETIRE_SCHEDULE = "physics/retire";
+export const PHYSICS_STATIC_UPDATE_SCHEDULE = "physics/static-update";
+/** Free pool rows and free static collider rows kept for bodies placed after the scene opens. */
+export const BODY_POOL_SPARE = 8;
 export const MotionTemporalSheetInput = $.MotionTemporalSheetInput;
 
 export const TextEmbedding = $.TextEmbedding;

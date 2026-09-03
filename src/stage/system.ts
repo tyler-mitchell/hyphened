@@ -41,8 +41,11 @@ const phase = {
 
 /** Compose the real provider-to-pixel path as one WebGPU Engine capability graph. */
 export const createMotionPipelineSystem = (input: {
-  /** The scene's placed bodies, lowered from the composition. */
-  readonly bodies: ReadonlyArray<PhysicsBodyInit>;
+  /** The scene's placed bodies, lowered from the composition: loose pool rows and fixed colliders. */
+  readonly bodies: {
+    readonly fixed: ReadonlyArray<PhysicsBodyInit>;
+    readonly loose: ReadonlyArray<PhysicsBodyInit>;
+  };
   readonly embeddings: ReadonlyArray<TextEmbedding>;
   readonly manifest: Parameters<typeof createMotionProvider>[0]["manifest"];
   readonly program: MotionPipelineProgram;

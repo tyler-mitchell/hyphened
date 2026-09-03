@@ -2,6 +2,7 @@ import type { TimelineRuntime } from "@coretime/core";
 
 import type { motionTimelineDeclaration } from "../../scene/timeline";
 import { ControlMotionInput } from "../../schema";
+import { restartMotionScene } from "../../stage/open";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
 export const transportTools = ({
@@ -17,7 +18,7 @@ export const transportTools = ({
       const actions = {
         pause: () => timeline.transport.pause(),
         play: () => timeline.transport.play(),
-        restart: () => timeline.transport.restart(),
+        restart: () => restartMotionScene(timeline),
         seek: () => {
           if (input.frame === undefined) throw new Error("seek needs a frame");
           return timeline.transport.seekTo({ clock: "motionFrame", tick: input.frame });

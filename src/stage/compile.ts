@@ -5,6 +5,7 @@ import {
   MotionCameraProgram,
   type MotionCameraProgram as MotionCameraProgramData,
   MotionCompilationProgram,
+  type MotionCompilationProgram as MotionCompilationProgramData,
   MotionPipelineProgram,
   type MotionPipelineProgram as MotionPipelineProgramData,
   MotionPresentationProgram,
@@ -108,16 +109,13 @@ const quaternionOfRotation = (
   return [x / length, y / length, z / length, w / length];
 };
 
-/** Lower one exact Core Time composition revision and admitted rig into the GPU program. */
-export const compileMotionPipelineProgram = (input: {
-  readonly artifact: { readonly id: string; readonly version: string };
+/** Lower the composition's prompt spans and route vertices into the per-actor clips a request is built from. */
+export const compileMotionCompilation = (input: {
   readonly composition: MotionSceneComposition;
   readonly framesPerSecond: number;
-  readonly render?: MotionRenderConfiguration;
-  readonly rig: MotionRigBinding<HumanoidRigAssets>;
-}): MotionPipelineProgramData => {
+}): MotionCompilationProgramData => {
   const frameCount = input.composition.frameCount;
-  const compilation = MotionCompilationProgram.assert({
+  return MotionCompilationProgram.assert({
     clips: input.composition.actors.flatMap((actor, actorIndex) =>
       actor.promptTrack.items.map((item, clip) => ({
         actor: actor.subject,
@@ -138,6 +136,21 @@ export const compileMotionPipelineProgram = (input: {
     frameCount,
     framesPerSecond: input.framesPerSecond,
     sourceFrameCount: input.composition.actors.length * frameCount,
+  });
+};
+
+/** Lower one exact Core Time composition revision and admitted rig into the GPU program. */
+export const compileMotionPipelineProgram = (input: {
+  readonly artifact: { readonly id: string; readonly version: string };
+  readonly composition: MotionSceneComposition;
+  readonly framesPerSecond: number;
+  readonly render?: MotionRenderConfiguration;
+  readonly rig: MotionRigBinding<HumanoidRigAssets>;
+}): MotionPipelineProgramData => {
+  const frameCount = input.composition.frameCount;
+  const compilation = compileMotionCompilation({
+    composition: input.composition,
+    framesPerSecond: input.framesPerSecond,
   });
 
   const motion = MotionPresentationProgram.assert({

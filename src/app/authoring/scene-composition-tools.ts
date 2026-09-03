@@ -1,9 +1,10 @@
 import type { TimelineCompositionChange, TimelineRuntime } from "@coretime/core";
 
-import type { motionTimelineDeclaration } from "../../scene/timeline";
+import { MOTION_FRAMES_PER_SECOND, type motionTimelineDeclaration } from "../../scene/timeline";
 import {
   EditSceneCompositionInput,
   ReadSceneCompositionInput,
+  ReadSceneSummaryInput,
   SceneAtInput,
   SceneHistoryInput,
   SceneWindowInput,
@@ -11,6 +12,7 @@ import {
 import {
   compositionRevision,
   SCENE_COMPOSITION,
+  SceneComposition,
   sceneCompositionEvents,
 } from "../../scene/composition";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
@@ -59,6 +61,53 @@ export const sceneCompositionTools = ({
         version: { type: "string" },
       },
       required: ["composition", "id", "version"],
+      type: "object",
+    },
+  },
+  {
+    annotations: { idempotentHint: true, readOnlyHint: true },
+    description:
+      "Read a compact summary of the scene: frame count, each actor's prompt spans and route end, the placed bodies, the camera cuts, and the current version. Start here; read the full composition only when you need item identities.",
+    execute: async (raw) => {
+      ReadSceneSummaryInput.assert(raw);
+      const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
+      const scene = SceneComposition.assert(readout.composition);
+      return webMcpResult({
+        actors: scene.actors.map(({ promptTrack, rootTrack, subject }) => ({
+          id: subject,
+          routeEnd: rootTrack.items.at(-1)?.data.position ?? [0, 0],
+          spans: promptTrack.items
+            .toSorted((left, right) => left.range.start - right.range.start)
+            .map(({ data, range }) => ({
+              end: range.start + range.duration,
+              prompt: data.prompt,
+              start: range.start,
+            })),
+        })),
+        bodies: scene.bodies.map(({ id, mass, subject, tick }) => ({ id, mass, subject, tick })),
+        cameras: scene.cameraTrack.items.map(({ data, range }) => ({
+          end: range.start + range.duration,
+          mode: data.mode,
+          start: range.start,
+        })),
+        frameCount: scene.frameCount,
+        framesPerSecond: MOTION_FRAMES_PER_SECOND,
+        version: compositionRevision(readout.version),
+      });
+    },
+    inputSchema: webMcpInputSchema(ReadSceneSummaryInput),
+    name: "read_scene_summary",
+    outputSchema: {
+      additionalProperties: false,
+      properties: {
+        actors: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        bodies: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        cameras: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        frameCount: { type: "integer" },
+        framesPerSecond: { type: "number" },
+        version: { type: "string" },
+      },
+      required: ["actors", "bodies", "cameras", "frameCount", "framesPerSecond", "version"],
       type: "object",
     },
   },
