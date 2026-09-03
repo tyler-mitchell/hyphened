@@ -14,6 +14,7 @@ import {
 } from "@coretime/editor";
 import { Button } from "@hyphened/ui/components/button";
 import { tv } from "@hyphened/ui/tv";
+import { useNavigate } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronRight,
@@ -157,16 +158,15 @@ const TransportPosition = ({ timeline }: { timeline: TimelineRuntime<MotionDecla
 const SceneTransportControls = ({
   restart,
   seed,
-  startScene,
   timeline,
 }: {
   restart: RestartScene;
   seed?: string;
-  startScene: StartScene;
   timeline: TimelineRuntime<MotionDeclaration>;
 }) => {
   const playing = useTimelineValue(timeline.state$.transport.playing);
   const command = useTimelineCommand();
+  const navigate = useNavigate();
   const styles = chromeStyles();
   // The picker starts on the story of the scene that is open, so after a switch it names what is
   // playing instead of the default. A scene an agent authored has no built-in story to name.
@@ -215,12 +215,12 @@ const SceneTransportControls = ({
           </option>
         ))}
       </select>
+      {/* The address owns which story plays, so this navigates and the shell opens what it names.
+          The back button then steps through scenes like any other page. */}
       <Button
         aria-label="New scene"
         disabled={command.pending}
-        onClick={() =>
-          void command.run(() => startScene({ seed: choice, story: AUTHORED_STORIES[choice]! }))
-        }
+        onClick={() => void navigate({ search: { story: choice }, to: "/" })}
         size="icon-xs"
         variant="ghost"
       >
@@ -409,7 +409,6 @@ const SceneTimelineSurface = ({
           <SceneTransportControls
             restart={restart}
             seed={seed}
-            startScene={startScene}
             timeline={timeline}
           />
           <SceneEditingControls timeline={timeline} />

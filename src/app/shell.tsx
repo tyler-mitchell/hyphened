@@ -112,17 +112,7 @@ export const App = () => {
     });
     sceneProject().then(
       (opened) => {
-        if (!mount.live) return;
-        setProject(opened);
-        // An address that names a different story than the saved scene wins, because the visitor
-        // followed a link to that story. A scene already on it, or an address naming none, opens
-        // the saved scene untouched.
-        const addressed = requested === undefined ? undefined : AUTHORED_STORIES[requested];
-        if (addressed !== undefined && requested !== opened.record.definition.seed) {
-          void startNewScene({ seed: requested, story: addressed }).catch((cause: unknown) => {
-            if (mount.live) setReadiness({ reason: describeFailure(cause), status: "failed" });
-          });
-        }
+        if (mount.live) setProject(opened);
       },
       (cause: unknown) => {
         if (mount.live) setReadiness({ reason: describeFailure(cause), status: "failed" });
@@ -148,6 +138,19 @@ export const App = () => {
       unobserve();
     };
   }, []);
+  // The address drives the scene. A story named there that is not the one playing opens, whether
+  // the visitor followed a link, chose from the picker, or pressed the back button; all three are
+  // the same navigation. The scene writing its own story back is a no-op here, which is what stops
+  // the two from chasing each other.
+  useEffect(() => {
+    if (project === undefined || requested === undefined) return;
+    const addressed = AUTHORED_STORIES[requested];
+    if (addressed === undefined || requested === project.record.definition.seed) return;
+    setReadiness({ status: "opening" });
+    void startNewScene({ seed: requested, story: addressed }).catch((cause: unknown) => {
+      setReadiness({ reason: describeFailure(cause), status: "failed" });
+    });
+  }, [project, requested]);
   const opened = useCallback(() => {
     setReadiness({ status: "open" });
     setProgress(undefined);
