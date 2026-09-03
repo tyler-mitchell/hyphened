@@ -34,7 +34,6 @@ interface TextBlock {
 
 type ContentBlock = TextBlock | ToolUseBlock | { readonly type: string };
 
-const MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 2048;
 /** A turn that keeps asking for tools past this has lost the thread; stop rather than loop. */
 const MAX_TOOL_ROUNDS = 8;
@@ -44,6 +43,131 @@ const isText = (block: ContentBlock): block is TextBlock => block.type === "text
 
 const readBlocks = (content: unknown): ReadonlyArray<ContentBlock> =>
   Array.isArray(content) ? (content as ReadonlyArray<ContentBlock>) : [];
+
+/** One tool the model asked for, in this file's own shape rather than a provider's. */
+interface ToolCall {
+  readonly id: string;
+  readonly input: unknown;
+  readonly name: string;
+}
+
+interface OfferedTool {
+  readonly description: string | undefined;
+  readonly name: string;
+  readonly schema: unknown;
+}
+
+/** What one answer carried, read out of whichever provider shape it arrived in. */
+interface AgentAnswer {
+  readonly calls: ReadonlyArray<ToolCall>;
+  readonly reply: AgentMessage;
+  readonly spoken: string;
+}
+
+interface OpenAiToolCall {
+  readonly function: { readonly arguments?: string; readonly name: string };
+  readonly id: string;
+}
+
+const parseArguments = (value: string | undefined): unknown => {
+  if (value === undefined || value.trim().length === 0) return {};
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * The two providers differ in three places and nowhere else: how tools are offered, how an answer
+ * carries its text and its tool calls, and how a tool's result is handed back. Each dialect states
+ * those three; the loop below reads them and knows about neither provider.
+ */
+const DIALECTS = {
+  anthropic: {
+    model: "claude-sonnet-5",
+    read: (answer: Record<string, unknown>): AgentAnswer => {
+      const blocks = readBlocks(answer.content);
+      return {
+        calls: blocks.filter(isToolUse).map(({ id, input, name }) => ({ id, input, name })),
+        reply: { content: answer.content, role: "assistant" },
+        spoken: blocks
+          .filter(isText)
+          .map(({ text }) => text)
+          .join("\n")
+          .trim(),
+      };
+    },
+    request: (messages: ReadonlyArray<AgentMessage>, tools: ReadonlyArray<OfferedTool>) => ({
+      max_tokens: MAX_TOKENS,
+      messages,
+      model: DIALECTS.anthropic.model,
+      tools: tools.map(({ description, name, schema }) => ({
+        description,
+        input_schema: schema,
+        name,
+      })),
+    }),
+    results: (
+      results: ReadonlyArray<{ readonly content: string; readonly id: string }>,
+    ): ReadonlyArray<AgentMessage> => [
+      {
+        content: results.map(({ content, id }) => ({
+          content,
+          tool_use_id: id,
+          type: "tool_result",
+        })),
+        role: "user",
+      },
+    ],
+  },
+  openai: {
+    model: "gpt-5.6",
+    read: (answer: Record<string, unknown>): AgentAnswer => {
+      const choices = Array.isArray(answer.choices) ? answer.choices : [];
+      const message = (choices[0] as { readonly message?: Record<string, unknown> } | undefined)
+        ?.message;
+      const calls = Array.isArray(message?.tool_calls)
+        ? (message.tool_calls as ReadonlyArray<OpenAiToolCall>)
+        : [];
+      return {
+        calls: calls.map(({ function: called, id }) => ({
+          id,
+          input: parseArguments(called.arguments),
+          name: called.name,
+        })),
+        reply: { content: message ?? {}, role: "assistant" },
+        spoken: typeof message?.content === "string" ? message.content.trim() : "",
+      };
+    },
+    request: (messages: ReadonlyArray<AgentMessage>, tools: ReadonlyArray<OfferedTool>) => ({
+      max_completion_tokens: MAX_TOKENS,
+      // This provider carries the whole message as one object, so an assistant turn is its own
+      // content and a person's turn is a role with a string.
+      messages: messages.map(({ content, role }) =>
+        role === "assistant" && typeof content === "object" && content !== null
+          ? { role, ...content }
+          : { content, role },
+      ),
+      model: DIALECTS.openai.model,
+      tools: tools.map(({ description, name, schema }) => ({
+        function: { description, name, parameters: schema },
+        type: "function",
+      })),
+    }),
+    results: (
+      results: ReadonlyArray<{ readonly content: string; readonly id: string }>,
+    ): ReadonlyArray<AgentMessage> =>
+      results.map(({ content, id }) => ({
+        content,
+        role: "tool" as unknown as "user",
+        tool_call_id: id,
+      })) as unknown as ReadonlyArray<AgentMessage>,
+  },
+} as const;
+
+const dialectFor = (provider: string) =>
+  provider === "openai" ? DIALECTS.openai : DIALECTS.anthropic;
 
 /**
  * The WebMCP surface carries a tool's input schema as a JSON string, while the model wants the
@@ -106,10 +230,11 @@ export const runAgentExchange = async (input: {
   readonly provider: string;
 }): Promise<ReadonlyArray<AgentMessage>> => {
   const available = await readTools();
+  const dialect = dialectFor(input.provider);
   const tools = available.map(({ description, input_schema, name }) => ({
     description,
-    input_schema,
     name,
+    schema: input_schema,
   }));
 
   const advance = async (
@@ -117,17 +242,15 @@ export const runAgentExchange = async (input: {
     round: number,
   ): Promise<ReadonlyArray<AgentMessage>> => {
     const answer = await callModel({
-      body: { max_tokens: MAX_TOKENS, messages, model: MODEL, tools },
+      body: dialect.request(messages, tools),
       key: input.key,
       provider: input.provider,
     });
-    const blocks = readBlocks(answer.content);
-    const spoken = blocks.filter(isText).map(({ text }) => text).join("\n").trim();
+    const { calls: requested, reply, spoken } = dialect.read(answer as Record<string, unknown>);
     if (spoken.length > 0) {
       input.onTurn({ body: spoken, id: crypto.randomUUID(), speaker: "agent" });
     }
-    const requested = blocks.filter(isToolUse);
-    const withAnswer = [...messages, { content: answer.content, role: "assistant" as const }];
+    const withAnswer = [...messages, reply];
     if (requested.length === 0) return withAnswer;
     if (round >= MAX_TOOL_ROUNDS) {
       input.onTurn({
@@ -161,20 +284,7 @@ export const runAgentExchange = async (input: {
       }),
     );
 
-    return advance(
-      [
-        ...withAnswer,
-        {
-          content: results.map(({ content, id }) => ({
-            content,
-            tool_use_id: id,
-            type: "tool_result",
-          })),
-          role: "user" as const,
-        },
-      ],
-      round + 1,
-    );
+    return advance([...withAnswer, ...dialect.results(results)], round + 1);
   };
 
   return advance([...input.history, { content: input.prompt, role: "user" }], 0);
