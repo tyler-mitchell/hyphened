@@ -68,7 +68,7 @@ export const $ = type.module({
     startFrame: "number.integer >= 0",
   },
   ControlMotionInput: {
-    action: "'pause' | 'play' | 'restart' | 'seek' | 'setRate' | 'step'",
+    action: "'newScene' | 'pause' | 'play' | 'restart' | 'seek' | 'setRate' | 'step'",
     "frame?": "number.integer >= 0",
     "rate?": "number > 0",
     "ticks?": "number.integer",

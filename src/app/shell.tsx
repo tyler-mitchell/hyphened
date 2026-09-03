@@ -6,6 +6,7 @@ import { MotionAgentObservability } from "./authoring/motion-agent-observability
 import { SceneReadinessTool, type SceneReadiness } from "./authoring/scene-readiness";
 import { SceneTimeline } from "./timeline/scene-timeline";
 import { openMotionProduction, restartMotionScene } from "../stage/open";
+import { sceneProject, type SceneProject } from "../scene/project";
 import { motionTimelineDeclaration } from "../scene/timeline";
 import { SCENE_SPAN_FRAMES } from "../scene/default";
 
@@ -39,6 +40,14 @@ export const App = () => {
   // The readiness tool registers before the scene opens and outlives a failed open, so an agent
   // can tell a booting page from one that will never boot on this device.
   const [readiness, setReadiness] = useState<SceneReadiness>({ status: "opening" });
+  // The durable scene (project catalog and journal) opens once, outside React, and its timeline
+  // is supplied to the canvas so history survives a reload.
+  const [project, setProject] = useState<SceneProject>();
+  useEffect(() => {
+    sceneProject().then(setProject, (cause: unknown) =>
+      setReadiness({ reason: String(cause), status: "failed" }),
+    );
+  }, []);
   const opened = useCallback(() => setReadiness({ status: "open" }), []);
   const openSession: WebGpuCanvasSessionFactory<typeof motionTimelineDeclaration> = ({
     timeline,
@@ -47,18 +56,21 @@ export const App = () => {
   return (
     <main className={styles.root()}>
       <SceneReadinessTool readiness={readiness} />
-      <WebGpuCanvas
-        className={styles.canvas()}
-        declaration={motionTimelineDeclaration}
-        onError={(cause) => setReadiness({ reason: String(cause), status: "failed" })}
-        openSession={openSession}
-      >
-        <SceneOpened onOpen={opened} />
-        <MotionAgentObservability />
-        <div className={styles.timeline()}>
-          <BoundSceneTimeline />
-        </div>
-      </WebGpuCanvas>
+      {project === undefined ? null : (
+        <WebGpuCanvas
+          className={styles.canvas()}
+          declaration={motionTimelineDeclaration}
+          onError={(cause) => setReadiness({ reason: String(cause), status: "failed" })}
+          openSession={openSession}
+          timeline={project.timeline}
+        >
+          <SceneOpened onOpen={opened} />
+          <MotionAgentObservability />
+          <div className={styles.timeline()}>
+            <BoundSceneTimeline />
+          </div>
+        </WebGpuCanvas>
+      )}
     </main>
   );
 };

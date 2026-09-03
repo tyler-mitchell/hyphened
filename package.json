@@ -19,6 +19,7 @@
     "@base-ui/react": "catalog:",
     "@coretime/core": "workspace:*",
     "@coretime/editor": "workspace:*",
+    "@coretime/project": "workspace:*",
     "@hyphened/ui": "workspace:*",
     "@legendapp/state": "catalog:",
     "@mcp-b/global": "catalog:",

@@ -1,6 +1,7 @@
 import type { TimelineRuntime } from "@coretime/core";
 
 import type { motionTimelineDeclaration } from "../../scene/timeline";
+import { startNewScene } from "../../scene/project";
 import { ControlMotionInput } from "../../schema";
 import { restartMotionScene } from "../../stage/open";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
@@ -12,10 +13,11 @@ export const transportTools = ({
 }): readonly RegisteredWebMcpTool[] => [
   {
     description:
-      "Control the Core Time transport: play, pause, seek to a motion frame, step by ticks, set the playback rate, or restart. Edit actor and camera composition with the composition tools.",
+      "Control the Core Time transport: play, pause, seek to a motion frame, step by ticks, set the playback rate, or restart. The authored scene persists in this browser across reloads; newScene abandons it for a fresh seeded scene and reloads the page. Edit actor and camera composition with the composition tools.",
     execute: async (raw) => {
       const input = ControlMotionInput.assert(raw);
       const actions = {
+        newScene: () => startNewScene(),
         pause: () => timeline.transport.pause(),
         play: () => timeline.transport.play(),
         restart: () => restartMotionScene(timeline),
