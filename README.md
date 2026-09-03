@@ -10,17 +10,24 @@ Submission to the WebMCP Challenge, September 2026.
 
 This project existed before August 25, 2026. Everything WebMCP was added during the submission period; the commit history in this repository carries the dates. The first commit after August 25 is the submission-period start.
 
-| Date | Change |
-| --- | --- |
-| 2026-08-29 | WebMCP registration owner and the first tool set |
-| 2026-08-31 | The scene authored as composition data; editor edits admitted |
-| 2026-09-01 | Composition checkpoints and the temporal contact sheet capture |
-| 2026-09-01 | Camera timeline composition and its tools |
-| 2026-09-02 | Authored routes and per-actor scenarios; bodies as composition entities |
-| 2026-09-02 | `set_motion_span` |
-| 2026-09-03 | Replan on edit, `set_actor_path`, `set_body`, `remove_body`, `read_scene_summary`, agent authorship, readiness |
-| 2026-09-03 | Camera moves, the durable scene, the prompt library with `list_motion_prompts` and `encode_motion_prompt`, `read_scene_history`, `newScene` |
-| 2026-09-03 | Stories as data with `author_scene`, cinematography presets with real lenses, `add_actor` and `remove_actor`, the motion library of 75 captions |
+| Date | Commit | Change |
+| --- | --- | --- |
+| 2026-08-29 | `bc5174537` | WebMCP registration owner and the first tool set |
+| 2026-08-31 | `e4292b5c6` | The scene authored as composition data |
+| 2026-08-31 | `47e777bbd` | Travel pace per prompt span; editor edits admitted through the same boundary |
+| 2026-09-01 | `1870c4334` | Composition checkpoints and the temporal contact sheet capture |
+| 2026-09-01 | `bc494ba14` | Camera timeline composition and its tools |
+| 2026-09-03 | `56418d9bc` | The seed story with authored coverage; `newScene` |
+| 2026-09-03 | `0de02d17e` | The durable scene: a record carries the story it was seeded from |
+| 2026-09-03 | `6a527e4f3` | The Victor: two actors, seven preset cuts, authored origins, cause-chain failures |
+| 2026-09-03 | `faa08f72a` | Stories as data: `AuthoredStory`, three built-ins, `author_scene` |
+| 2026-09-03 | `5143b799f` | The manifest-backed motion library; rows load on first use |
+| 2026-09-03 | `c6528e3d4` | `add_actor` and `remove_actor`: actors join and leave the running scene |
+| 2026-09-03 | `9e1a94231` | `read_scene_summary` carries each actor's origin |
+| 2026-09-03 | `113808150` | Library entries carry category, laterality, and posture |
+| 2026-09-03 | `8ca5d97f0` | `list_motion_prompts` faceted by category, tag, posture, and pace |
+| 2026-09-03 | `ff9bc0330` | The motion library reaches 75 captions |
+| 2026-09-03 | `db883c41a` | The model route redirects to object storage for deployment |
 
 The timeline substrate and the engine existed before the period. They are licensed dependencies of this application, vendored under `vendor/`, and are not part of the open-source code here.
 
