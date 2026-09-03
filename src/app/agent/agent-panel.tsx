@@ -48,6 +48,9 @@ const AgentTurnView = ({ turn }: { readonly turn: AgentTurn }) => {
     <article className={styles.root()}>
       {turn.label === undefined ? null : <span className={styles.label()}>{turn.label}</span>}
       {turn.body === undefined ? null : <p className={styles.body()}>{turn.body}</p>}
+      {turn.image === undefined ? null : (
+        <img alt="Captured from the scene" className={styles.image()} src={turn.image} />
+      )}
       {turn.payload === undefined ? null : <pre className={styles.payload()}>{turn.payload}</pre>}
     </article>
   );

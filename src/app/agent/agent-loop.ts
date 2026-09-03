@@ -9,6 +9,8 @@ export type AgentSpeaker = "agent" | "failure" | "person" | "tool";
 export interface AgentTurn {
   readonly body?: string;
   readonly id: string;
+  /** A data URL, when the tool returned an image. Shown to the person, never sent to the model. */
+  readonly image?: string;
   readonly label?: string;
   readonly payload?: string;
   readonly speaker: AgentSpeaker;
@@ -70,6 +72,34 @@ const boundResult = (outcome: string) =>
   outcome.length <= RESULT_LIMIT
     ? outcome
     : `${outcome.slice(0, RESULT_LIMIT)}\n\n[cut after ${String(RESULT_LIMIT)} of ${String(outcome.length)} characters. read_scene_summary answers the same question compactly.]`;
+
+/**
+ * A result arrives as JSON of the whole tool result, so an image block carries its base64 inside
+ * that string — megabytes of it for a contact sheet. Bounding it would hand the model thousands of
+ * characters it cannot read and cut away the receipt that follows. The image goes to the person and
+ * the receipt goes to the model, which is the split each of them can actually use.
+ */
+const capturedImage = (raw: string) => {
+  if (!raw.startsWith("{")) return undefined;
+  try {
+    const result = JSON.parse(raw) as {
+      readonly content?: ReadonlyArray<{
+        readonly data?: string;
+        readonly mimeType?: string;
+        readonly type?: string;
+      }>;
+      readonly structuredContent?: unknown;
+    };
+    const image = result.content?.find((block) => block.type === "image");
+    if (image?.data === undefined) return undefined;
+    return {
+      receipt: JSON.stringify(result.structuredContent ?? {}),
+      source: `data:${image.mimeType ?? "image/png"};base64,${image.data}`,
+    };
+  } catch {
+    return undefined;
+  }
+};
 
 /** One tool the model asked for, in this file's own shape rather than a provider's. */
 interface ToolCall {
@@ -311,14 +341,21 @@ export const runAgentExchange = async (input: {
           return { content: `"${block.name}" is not registered on this page.`, id: block.id };
         }
         // executeTool takes its arguments as a JSON string, not an object.
-        const outcome = await document
+        const raw = await document
           .modelContext!.executeTool(known.tool, JSON.stringify(block.input ?? {}))
           .then(
-            (value) => boundResult(value ?? ""),
+            (value) => value ?? "",
             (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
           );
+        // Read the image before bounding: a cut string is no longer the JSON that carries it.
+        const captured = capturedImage(raw);
+        const outcome =
+          captured === undefined
+            ? boundResult(raw)
+            : `${captured.receipt}\n\n[the image is displayed to the person]`;
         input.onTurn({
           id: crypto.randomUUID(),
+          ...(captured === undefined ? {} : { image: captured.source }),
           label: block.name,
           payload: `${JSON.stringify(block.input ?? {}, undefined, 2)}\n→ ${outcome}`,
           speaker: "tool",

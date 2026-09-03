@@ -19,6 +19,7 @@ export const agentPanelStyles = tv({
 export const agentTurnStyles = tv({
   slots: {
     body: "whitespace-pre-wrap",
+    image: "mt-1 w-full rounded-[3px] border border-[var(--editor-border)]",
     label: "font-mono text-[9px] tracking-wide uppercase opacity-70",
     payload:
       "mt-1 max-h-32 overflow-auto rounded-[3px] bg-[var(--editor-canvas)] px-1.5 py-1 font-mono text-[9px] leading-relaxed whitespace-pre-wrap text-[var(--editor-text-muted)]",
