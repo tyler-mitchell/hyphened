@@ -8,14 +8,6 @@ import { useState } from "react";
 import { runAgentExchange, type AgentMessage, type AgentTurn } from "./agent-loop";
 import { agentPanelStyles, agentTurnStyles } from "./agent-panel.styles";
 
-/**
- * Whether this browser carried WebMCP itself. Read at module evaluation, which happens before
- * `useAgentTools` dynamically imports the polyfill, so it reports the browser and not the polyfill
- * that stands in for it. A browser with native WebMCP can drive the page from a real client, so the
- * panel stays out of its way.
- */
-const NATIVE_WEBMCP = typeof document !== "undefined" && document.modelContext !== undefined;
-
 const KEY_STORAGE = "ardy.agent.key";
 
 /**
@@ -101,8 +93,6 @@ export const AgentPanel = () => {
     if (next !== undefined) setHistory(next);
     setBusy(false);
   };
-
-  if (NATIVE_WEBMCP) return null;
 
   if (!open) {
     return (
