@@ -6,6 +6,7 @@ import {
   MotionCompilationProgram,
   type MotionCompilationProgram as MotionCompilationProgramData,
   MotionPresentationProgram,
+  type MotionSubjectDefinition,
 } from "webgpu-engine/motion";
 import {
   MotionCameraProgram,
@@ -29,11 +30,23 @@ export const compileMotionCameraProgram = (input: {
           frame < candidate.range.start + candidate.range.duration,
       )!;
       const data = item.data;
+      // A shot may name an actor that has since left the scene; it frames the ones that remain,
+      // and every actor when none of its targets remain.
+      const remaining =
+        data.target.kind === "point"
+          ? []
+          : data.target.entities.flatMap((entity) => {
+              const row = actorRows.get(entity);
+              return row === undefined ? [] : [row];
+            });
       const target =
         data.target.kind === "point"
           ? data.target
           : {
-              entities: data.target.entities.map((entity) => actorRows.get(entity)!),
+              entities:
+                remaining.length > 0
+                  ? remaining
+                  : input.composition.actors.map(({ row }) => row),
               kind: "entities" as const,
               offset: data.target.offset,
             };
@@ -123,14 +136,19 @@ const quaternionOfRotation = (
   return [x / length, y / length, z / length, w / length];
 };
 
-/** Lower the composition's prompt spans and route vertices into the per-actor clips a request is built from. */
+/**
+ * Lower the composition's prompt spans and route vertices into the per-actor clips a request is
+ * built from. The product ring has one slice per subject row, so an actor's clips sit at its
+ * row, and the ring spans every row the production opened with, spare rows included.
+ */
 export const compileMotionCompilation = (input: {
   readonly composition: MotionSceneComposition;
   readonly framesPerSecond: number;
+  readonly rowCount: number;
 }): MotionCompilationProgramData => {
   const frameCount = input.composition.frameCount;
   return MotionCompilationProgram.assert({
-    clips: input.composition.actors.flatMap((actor, actorIndex) =>
+    clips: input.composition.actors.flatMap((actor) =>
       actor.promptTrack.items.map((item, clip) => ({
         actor: actor.subject,
         conditioning: item.conditioning,
@@ -142,14 +160,14 @@ export const compileMotionCompilation = (input: {
             ? []
             : [{ ...keyframe.data, frame: keyframe.at.tick - item.range.start }],
         ),
-        seed: INITIAL_PRODUCT_SEED + actorIndex * 100 + clip,
-        sourceFrameStart: actorIndex * frameCount + item.range.start,
+        seed: INITIAL_PRODUCT_SEED + actor.row * 100 + clip,
+        sourceFrameStart: actor.row * frameCount + item.range.start,
         timelineFrameStart: item.range.start,
       })),
     ),
     frameCount,
     framesPerSecond: input.framesPerSecond,
-    sourceFrameCount: input.composition.actors.length * frameCount,
+    sourceFrameCount: input.rowCount * frameCount,
   });
 };
 
@@ -160,18 +178,21 @@ export const compileMotionPipelineProgram = (input: {
   readonly framesPerSecond: number;
   readonly render?: MotionRenderConfiguration;
   readonly rig: MotionRigBinding<HumanoidRigAssets>;
+  /** Every subject row the production opens with: the cast plus the spare rows. */
+  readonly subjects: ReadonlyArray<MotionSubjectDefinition>;
 }): MotionPipelineProgramData => {
   const frameCount = input.composition.frameCount;
   const compilation = compileMotionCompilation({
     composition: input.composition,
     framesPerSecond: input.framesPerSecond,
+    rowCount: input.subjects.length,
   });
 
   const motion = MotionPresentationProgram.assert({
     actors: Object.fromEntries(
-      input.composition.actors.map(({ row, subject, worldOffset }) => {
+      input.subjects.map(({ id, row, worldOffset }) => {
         return [
-          subject,
+          id,
           {
             sourceFrameStart: row * frameCount,
             timelineFrameCount: frameCount,

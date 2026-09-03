@@ -3,7 +3,7 @@ import type { TimelineCompositionChange, TimelineRuntime } from "@coretime/core"
 import { PUBLISHED_FRAMES_PER_WINDOW } from "webgpu-engine/motion";
 import { sceneProject } from "../../scene/project";
 import { encodeMotionPrompt } from "../../scene/prompt-encoder";
-import { promptLibrary } from "../../scene/prompts";
+import { promptLibrary, type MotionPrompt } from "../../scene/prompts";
 import {
   actorGroupId,
   actorTrackId,
@@ -39,6 +39,51 @@ const failure = (cause: unknown) => ({
 const promptItemId = (input: { readonly start: number; readonly subject: string }) =>
   `prompt-${String(input.start)}/${input.subject}`;
 
+/** The predicates a list_motion_prompts call names; an entry without the facet never matches. */
+const promptFilters = ({
+  category,
+  enter,
+  exit,
+  maxPace,
+  minPace,
+  tag,
+}: typeof ListMotionPromptsInput.infer): ReadonlyArray<(entry: MotionPrompt) => boolean> => [
+  ...(category === undefined ? [] : [(entry: MotionPrompt) => entry.category === category]),
+  ...(tag === undefined ? [] : [(entry: MotionPrompt) => entry.tags?.includes(tag) ?? false]),
+  ...(enter === undefined ? [] : [(entry: MotionPrompt) => entry.posture?.enter === enter]),
+  ...(exit === undefined ? [] : [(entry: MotionPrompt) => entry.posture?.exit === exit]),
+  ...(minPace === undefined ? [] : [(entry: MotionPrompt) => entry.pace >= minPace]),
+  ...(maxPace === undefined ? [] : [(entry: MotionPrompt) => entry.pace <= maxPace]),
+];
+
+/** How many entries carry each value of one facet; an entry without it counts as unclassified. */
+const facetCounts = (values: ReadonlyArray<string | undefined>): Record<string, number> =>
+  values.reduce<Record<string, number>>((counts, value) => {
+    const key = value ?? "unclassified";
+    return { ...counts, [key]: (counts[key] ?? 0) + 1 };
+  }, {});
+
+/** A library entry as the tool reports it: a facet the entry lacks is omitted, never invented. */
+const promptEntry = ({
+  category,
+  duration,
+  laterality,
+  pace,
+  posture,
+  prompt,
+  tags,
+}: MotionPrompt) => ({
+  pace,
+  prompt,
+  tags: tags ?? [],
+  ...(category === undefined ? {} : { category }),
+  ...(duration === undefined ? {} : { duration }),
+  ...(laterality === undefined ? {} : { laterality }),
+  ...(posture === undefined ? {} : { posture }),
+});
+
+const facetCountSchema = { additionalProperties: { type: "integer" }, type: "object" } as const;
+
 /**
  * Motion authoring by meaning: give one actor one prompt over one frame range. The range snaps
  * outward to the generation grid, since a prompt can only change where a window begins. The
@@ -55,29 +100,65 @@ export const motionSpanTools = ({
   {
     annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "List the prompts an actor can be conditioned on, each with its route pace in metres per second (zero means the actor performs in place). set_motion_span accepts exactly these prompt strings.",
+      "Browse the prompts an actor can be conditioned on. Called with no input, it returns counts and no entries: `total`, `byCategory`, `byPostureEnter`, and `byPostureExit`, each counting entries without the facet under `unclassified` and summing to `total`; call it first to see the library's shape and choose a filter. With any filter (`category`, `tag`, `enter`, `exit`, `minPace`, `maxPace`; combined with AND; pace bounds inclusive, so minPace 0 and maxPace 0 gives the captions performed in place) or `all: true`, it returns `matched` (how many entries the filter selects), `returned` (how many are in this reply, at most `limit`, default 100, maximum 200; a larger limit is refused), and `prompts`; when returned is less than matched, narrow the filter. An entry without a facet never matches a filter on that facet. Each entry carries its route pace in metres per second (zero performs in place), its tags, and, when the library knows them, its category, laterality, posture (the stance a beat begins in and leaves the actor in, for chaining beats), and duration (a hint in frames, on a caption that completes an action). set_motion_span and author_scene accept exactly these prompt strings; a prompt's row loads the first time a span uses it.",
     execute: async (raw) => {
-      ListMotionPromptsInput.assert(raw);
+      const input = ListMotionPromptsInput.assert(raw);
+      const library = promptLibrary.list();
+      const filters = promptFilters(input);
+      if (input.all !== true && filters.length === 0) {
+        return webMcpResult({
+          byCategory: facetCounts(library.map(({ category }) => category)),
+          byPostureEnter: facetCounts(library.map(({ posture }) => posture?.enter)),
+          byPostureExit: facetCounts(library.map(({ posture }) => posture?.exit)),
+          total: library.length,
+        });
+      }
+      const matched = library.filter((entry) => filters.every((matches) => matches(entry)));
+      const returned = matched.slice(0, input.limit);
       return webMcpResult({
-        prompts: promptLibrary.list().map(({ pace, prompt }) => ({ pace, prompt })),
+        matched: matched.length,
+        prompts: returned.map(promptEntry),
+        returned: returned.length,
       });
     },
     inputSchema: webMcpInputSchema(ListMotionPromptsInput),
     name: "list_motion_prompts",
     outputSchema: {
       additionalProperties: false,
+      oneOf: [
+        { required: ["byCategory", "byPostureEnter", "byPostureExit", "total"] },
+        { required: ["matched", "prompts", "returned"] },
+      ],
       properties: {
+        byCategory: facetCountSchema,
+        byPostureEnter: facetCountSchema,
+        byPostureExit: facetCountSchema,
+        matched: { type: "integer" },
         prompts: {
           items: {
             additionalProperties: false,
-            properties: { pace: { type: "number" }, prompt: { type: "string" } },
-            required: ["pace", "prompt"],
+            properties: {
+              category: { type: "string" },
+              duration: { type: "integer" },
+              laterality: { type: "string" },
+              pace: { type: "number" },
+              posture: {
+                additionalProperties: false,
+                properties: { enter: { type: "string" }, exit: { type: "string" } },
+                required: ["enter", "exit"],
+                type: "object",
+              },
+              prompt: { type: "string" },
+              tags: { items: { type: "string" }, type: "array" },
+            },
+            required: ["pace", "prompt", "tags"],
             type: "object",
           },
           type: "array",
         },
+        returned: { type: "integer" },
+        total: { type: "integer" },
       },
-      required: ["prompts"],
       type: "object",
     },
   },
@@ -137,6 +218,12 @@ export const motionSpanTools = ({
           ),
         );
       }
+      // A library row loads the first time a span uses it.
+      const ensured = await promptLibrary.ensure([input.prompt]).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      if (ensured !== undefined) return failure(ensured);
       const grid = PUBLISHED_FRAMES_PER_WINDOW;
       const start = Math.floor(input.startFrame / grid) * grid;
       const end = Math.min(

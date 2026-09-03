@@ -42,9 +42,6 @@ export const motionTimelineDeclaration = defineTimeline({
     [MOTION_ROUTE_EVENT]: { version: 1 },
   },
   primary: "motionFrame",
-  // The scene is live-only: it reconstructs from its composition, never from step records, and
-  // recording a step costs a journal write per step.
-  retention: { steps: "omitted" },
   schedules: {
     [MOTION_REQUEST_SCHEDULE]: { armed: true },
     [MOTION_SUBJECT_SCHEDULE]: { armed: true },

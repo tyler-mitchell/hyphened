@@ -9,13 +9,15 @@ import { MotionTemporalSheetInput } from "../../schema";
 import { publishCaptureArtifact } from "./capture-artifact";
 import { captureMotionTemporalSheet } from "./capture-temporal-sheet";
 import { actorPathTools } from "./actor-path-tools";
+import { actorTools } from "./actor-tools";
 import { bodyTools } from "./body-tools";
 import { cameraCompositionTools } from "./camera-composition-tools";
 import { motionSpanTools } from "./motion-span-tools";
 import { sceneCompositionTools } from "./scene-composition-tools";
+import { storyTools } from "./story-tools";
 import { transportTools } from "./transport-tools";
 import { useAgentTools } from "./use-agent-tool";
-import { webMcpInputSchema, webMcpResourceResult, type RegisteredWebMcpTool } from "./webmcp";
+import { webMcpImageResult, webMcpInputSchema, type RegisteredWebMcpTool } from "./webmcp";
 
 /** Register the app's semantic browser-agent operations. */
 export const MotionAgentObservability = () => {
@@ -47,19 +49,21 @@ export const MotionAgentObservability = () => {
     }
   };
   useAgentTools([
+    ...actorTools({ synchronize, timeline }),
     ...actorPathTools({ synchronize, timeline }),
     ...bodyTools({ synchronize, timeline }),
     ...cameraCompositionTools({ synchronize, timeline }),
     ...motionSpanTools({ synchronize, timeline }),
     ...sceneCompositionTools({ synchronize, timeline }),
+    ...storyTools(),
     ...transportTools({ restart, timeline }),
     {
       annotations: { readOnlyHint: true },
       description:
-        "Capture any valid motion-frame window as a labeled temporal sheet from the live GPU renderer. The capture temporarily drives exact Core Time steps and restores the prior transport position and play state.",
+        "Capture any valid motion-frame window as a labeled temporal sheet from the live GPU renderer: one sample is a still of one frame, more samples show the motion over time. The image comes back inside the result. The capture temporarily drives exact Core Time steps and restores the prior transport position and play state.",
       execute: async (raw: unknown) => {
         const input = MotionTemporalSheetInput.assert(raw);
-        const capture = await captureMotionTemporalSheet({
+        const captured = await captureMotionTemporalSheet({
           engine,
           samples: input.samples,
           stride: input.stride,
@@ -67,8 +71,18 @@ export const MotionAgentObservability = () => {
           window: input.window,
           ...(input.layout === undefined ? {} : { layout: input.layout }),
           ...(input.subject === undefined ? {} : { subject: input.subject }),
-        });
-        return webMcpResourceResult({
+        }).then(
+          (capture) => ({ capture }),
+          (cause: unknown) => ({ cause }),
+        );
+        // A refused seek or a device fault is the agent's next decision, not a thrown stack.
+        if ("cause" in captured) {
+          const text = captured.cause instanceof Error ? captured.cause.message : String(captured.cause);
+          return { content: [{ text, type: "text" as const }], isError: true };
+        }
+        const capture = captured.capture;
+        return webMcpImageResult({
+          data: capture.image.dataUrl.slice(capture.image.dataUrl.indexOf(",") + 1),
           mimeType: capture.image.mimeType,
           name: "Motion temporal sheet",
           uri: await publishCaptureArtifact(capture.image.blob),

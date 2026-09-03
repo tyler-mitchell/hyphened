@@ -11,7 +11,12 @@ import {
   SceneComposition,
 } from "../../scene/composition";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
-import { CameraItemData, DEFAULT_TEMPORAL_SHEET_COLUMNS, PromptItemData } from "../../schema";
+import {
+  CameraItemData,
+  DEFAULT_TEMPORAL_SHEET_CELL_WIDTH,
+  DEFAULT_TEMPORAL_SHEET_COLUMNS,
+  PromptItemData,
+} from "../../schema";
 
 const reviewHints = [
   "Check that the window, camera, and visible performers fit the question.",
@@ -98,11 +103,14 @@ export const captureMotionTemporalSheet = async (input: {
         advance: async () => {
           await input.timeline.transport.stepBy({ ticks: 1 });
         },
+        // Review size: the canvas is wide, so full-size cells shrink the labels below legibility.
+        cellWidth: DEFAULT_TEMPORAL_SHEET_CELL_WIDTH,
+        smoothing: true,
         cellLabel: (index) => {
           const sample = observations[index]!;
           return `frame ${String(sample.frame)} · state ${sample.motionState} · camera ${sample.cameraItem}`;
         },
-        columns: input.layout?.columns ?? DEFAULT_TEMPORAL_SHEET_COLUMNS,
+        columns: Math.min(input.samples, input.layout?.columns ?? DEFAULT_TEMPORAL_SHEET_COLUMNS),
         flush: () => input.engine.flush(),
         samples: input.samples,
         stride: input.stride,

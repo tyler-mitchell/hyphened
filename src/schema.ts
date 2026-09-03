@@ -7,23 +7,22 @@ import {
   motionModelScope,
 } from "webgpu-engine/motion";
 
+import { CAMERA_SHOT_PRESETS } from "./scene/cinematography";
+
 /** The rigid-body solver substeps on a clock mapped from the motion frame. */
 export const PHYSICS_SUBSTEP_CLOCK = "physicsSubstep";
+/** Actor rows kept beyond the story's cast so an actor can be added while the scene runs. */
+export const ACTOR_POOL_SPARE = 2;
 export const PHYSICS_SUBSTEPS_PER_FRAME = 4;
 export const INITIAL_SUBJECT_COUNT = 2;
 export const DEFAULT_TEMPORAL_SHEET_COLUMNS = 4;
+export const DEFAULT_TEMPORAL_SHEET_CELL_WIDTH = 480;
 
 /** The application's authoring vocabulary, composed over the motion model's own scope. */
 export const $ = type.module({
   ...motionModelScope.export(),
   ActorColors: "Vector4[] == 2",
   ActorTrackChild: { id: "string >= 1", kind: "'track'" },
-  ActorLayout: {
-    columns: "number.integer > 0",
-    columnSpacing: "number >= 0",
-    origin: "Vector3",
-    rowSpacing: "number >= 0",
-  },
   ActorPresence: { active: "boolean", subject: "string >= 1" },
   AuthoredActor: {
     prompts: "AuthoredPromptSpan[]",
@@ -36,6 +35,34 @@ export const $ = type.module({
     start: "U32",
   },
   AuthoredRootConstraint: { constraint: "RootConstraint", tick: "U32" },
+  /** One beat of an actor's scenario: a caption held for a number of frames. */
+  AuthoredBeat: { frames: "number.integer > 0", prompt: "NonEmptyString" },
+  /** One shot of a story's coverage: a preset on the actor of a row over a frame range. */
+  AuthoredShot: { end: "U32", preset: "CameraShotPreset", row: "U32", start: "U32" },
+  /**
+   * A story as an agent authors it and as the built-in scenes are written: each actor is where it
+   * stands in the world, the planar path it follows in its own frame, and its beats in order; the
+   * coverage is the cuts, contiguous from frame 0 to the end.
+   */
+  AuthoredStory: {
+    actors: "AuthoredStoryActor[] >= 1",
+    coverage: "AuthoredShot[] >= 1",
+    frameCount: "number.integer > 0",
+    title: "string >= 1",
+  },
+  AuthoredStoryActor: {
+    origin: "Vector3",
+    path: "PlanarPoint[] >= 1",
+    scenario: "AuthoredBeat[] >= 1",
+  },
+  AuthorSceneInput: { story: "AuthoredStory" },
+  /** A new actor while the scene runs: where it stands, its path, and its beats; beats default to standing still. */
+  AddActorInput: {
+    origin: "Vector3",
+    "path?": "PlanarPoint[] >= 1",
+    "scenario?": "AuthoredBeat[] >= 1",
+  },
+  RemoveActorInput: { actor: "NonEmptyString" },
   ActorGroup: {
     children: "ActorTrackChild[]",
     data: {
@@ -53,8 +80,21 @@ export const $ = type.module({
     fieldOfViewY: "0 < number < 3.141592653589793",
     near: "number > 0",
   },
+  /**
+   * A shot as an agent authors it: a named preset framed off the subject's heading, or an explicit
+   * orbit or look-at view. Projection and target default to the scene's when omitted; a focal
+   * length in millimetres (35 mm filmback) sets the field of view.
+   */
+  CameraShotInput: "PresetCameraShotInput | OrbitCameraShotInput | LookCameraShotInput",
+  CameraShotPreset: type.enumerated(...CAMERA_SHOT_PRESETS),
+  PresetCameraShotInput: {
+    kind: "'camera'",
+    "label?": "string >= 1",
+    preset: "CameraShotPreset",
+    subject: "string >= 1",
+  },
   CameraTimelineItemInput: {
-    data: "CameraItemData",
+    data: "CameraShotInput",
     durationFrames: "number.integer > 0",
     id: "string >= 1",
     startFrame: "number.integer >= 0",
@@ -63,6 +103,8 @@ export const $ = type.module({
     action: "'newScene' | 'pause' | 'play' | 'restart' | 'seek' | 'setRate' | 'step'",
     "frame?": "number.integer >= 0",
     "rate?": "number > 0",
+    /** For newScene: the built-in story to open; the default story when omitted. */
+    "story?": "string >= 1",
     "ticks?": "number.integer",
   },
   EditSceneCompositionInput: {
@@ -174,7 +216,7 @@ export const $ = type.module({
   ],
   MotionTemporalSheetInput: {
     "layout?": "TemporalSheetLayout",
-    samples: "4 <= number.integer <= 24",
+    samples: "1 <= number.integer <= 24",
     stride: "1 <= number.integer <= 60",
     "subject?": "string >= 1",
     window: "TemporalSheetWindow",
@@ -223,8 +265,6 @@ export const $ = type.module({
   },
   RenderCameraShot: "RenderOrbitCameraShot | RenderLookCameraShot",
   SceneAtInput: { frame: "number.integer >= 0" },
-  SceneCameraEntityTarget: { kind: "'entities'", offset: "Vector3" },
-  SceneCameraTarget: "SceneCameraEntityTarget | CameraPointTarget",
   SceneCompositionChange: { type: "SceneCompositionChangeType" },
   SceneCompositionChangeType: type.enumerated(
     "composition/add",
@@ -261,41 +301,38 @@ export const $ = type.module({
     action: "'undo' | 'redo'",
     transactionId: ["string >= 1", "=", () => `agent/history/${crypto.randomUUID()}`],
   },
-  SceneLookCameraShot: {
-    label: "string >= 1",
-    mode: "'look-at'",
-    position: "Vector3",
-    "to?": { position: "Vector3" },
-  },
-  SceneOrbitCameraShot: {
-    distance: "number > 0",
-    label: "string >= 1",
-    mode: "'orbit'",
-    pitch: "Finite",
-    "to?": { distance: "number > 0", pitch: "Finite", yaw: "Finite" },
-    yaw: "Finite",
-  },
-  SceneCameraShot: "SceneOrbitCameraShot | SceneLookCameraShot",
   ScenePresentationCamera: {
-    cutFraction: "0 < number < 1",
     label: "string >= 1",
     projection: "PerspectiveProjection",
-    shots: "SceneCameraShot[] == 2",
-    target: "SceneCameraTarget",
   },
   ScenePresentationConfiguration: {
-    actorLayout: "ActorLayout",
     camera: "ScenePresentationCamera",
   },
   SceneReadinessInput: {},
   ReadSceneHistoryInput: {},
-  ListMotionPromptsInput: {},
+  /**
+   * Filters over the prompt library, per docs/internal/motion-library.md. Without a filter and
+   * without `all` the tool returns counts and no entries; filters combine with AND; an entry
+   * without a facet never matches a filter on it; `limit` bounds every reply that carries entries.
+   * The cap of 200 is the size of the largest planned category, so one call reads one full
+   * category and no more; a larger limit is refused, not clamped, so an agent learns to narrow.
+   */
+  ListMotionPromptsInput: {
+    "all?": "boolean",
+    "category?": "NonEmptyString",
+    "enter?": "NonEmptyString",
+    "exit?": "NonEmptyString",
+    limit: "1 <= number.integer <= 200 = 100",
+    "maxPace?": "number >= 0",
+    "minPace?": "number >= 0",
+    "tag?": "NonEmptyString",
+  },
   EncodeMotionPromptInput: { "pace?": "number >= 0", prompt: "NonEmptyString" },
   PlanarPoint: ["Finite", "Finite"],
   RemoveBodyInput: { id: "NonEmptyString" },
   SetActorPathInput: { actor: "NonEmptyString", path: "PlanarPoint[] >= 1" },
   SetBodyInput: {
-    elevation: "number >= 0",
+    "elevation?": "number >= 0",
     halfExtents: "ReadonlyVector3",
     "id?": "NonEmptyString",
     label: "string >= 1",
@@ -330,6 +367,7 @@ export const $ = type.module({
       "0 <= number.integer <= 255",
     ],
     "cellScale?": "0 < number <= 4",
+    "cellWidth?": "64 <= number.integer <= 2048",
     "columns?": "1 <= number.integer <= 12",
     "format?": "'jpeg' | 'png' | 'webp'",
     "gap?": "0 <= number.integer <= 128",
@@ -376,6 +414,28 @@ export const $ = type.module({
     pitch: "Finite",
     projection: "PerspectiveProjection",
     target: "TimelineCameraTarget",
+    "to?": { distance: "number > 0", pitch: "Finite", yaw: "Finite" },
+    yaw: "Finite",
+  },
+  LookCameraShotInput: {
+    "focalLength?": "number > 0",
+    kind: "'camera'",
+    label: "string >= 1",
+    mode: "'look-at'",
+    position: "Vector3",
+    "projection?": "PerspectiveProjection",
+    "target?": "TimelineCameraTarget",
+    "to?": { position: "Vector3" },
+  },
+  OrbitCameraShotInput: {
+    distance: "number > 0",
+    "focalLength?": "number > 0",
+    kind: "'camera'",
+    label: "string >= 1",
+    mode: "'orbit'",
+    pitch: "Finite",
+    "projection?": "PerspectiveProjection",
+    "target?": "TimelineCameraTarget",
     "to?": { distance: "number > 0", pitch: "Finite", yaw: "Finite" },
     yaw: "Finite",
   },
@@ -444,14 +504,7 @@ export type MotionPipelineProgram = typeof MotionPipelineProgram.infer;
 
 /** Seed presentation for a new composition; persisted timeline items become authoritative afterward. */
 export const ScenePresentationConfiguration = $.ScenePresentationConfiguration.merge({
-  actorLayout: $.ActorLayout.default((): typeof $.ActorLayout.infer => ({
-    columns: 2,
-    columnSpacing: 4,
-    origin: [0, 0, 0],
-    rowSpacing: 3,
-  })),
   camera: $.ScenePresentationCamera.default((): typeof $.ScenePresentationCamera.infer => ({
-    cutFraction: 0.5,
     label: "Camera",
     projection: {
       far: 1_000,
@@ -459,28 +512,6 @@ export const ScenePresentationConfiguration = $.ScenePresentationConfiguration.m
       kind: "perspective",
       near: 0.1,
     },
-    // Both shots orbit the actors' centroid; at four metres of column spacing plus the route sway,
-    // the distance must hold both bodies in the 45 degree field. The opening shot pushes in; the
-    // side shot arcs around the duck.
-    shots: [
-      {
-        distance: 9,
-        label: "Opening Camera",
-        mode: "orbit",
-        pitch: 0.22,
-        to: { distance: 7, pitch: 0.18, yaw: 0.55 },
-        yaw: 0.55,
-      },
-      {
-        distance: 10,
-        label: "Side Camera",
-        mode: "orbit",
-        pitch: 0.12,
-        to: { distance: 10, pitch: 0.12, yaw: 1.5 },
-        yaw: 1.1,
-      },
-    ],
-    target: { kind: "entities", offset: [0, 0, 0] },
   })),
 });
 export type ScenePresentationConfiguration = typeof ScenePresentationConfiguration.infer;
@@ -531,3 +562,8 @@ export const PHYSICS_STATIC_UPDATE_SCHEDULE = "physics/static-update";
 /** Free pool rows and free static collider rows kept for bodies placed after the scene opens. */
 export const BODY_POOL_SPARE = 8;
 export const MotionTemporalSheetInput = $.MotionTemporalSheetInput;
+export const AuthoredStory = $.AuthoredStory;
+export type AuthoredStory = typeof AuthoredStory.infer;
+export const AuthorSceneInput = $.AuthorSceneInput;
+export const AddActorInput = $.AddActorInput;
+export const RemoveActorInput = $.RemoveActorInput;

@@ -12,18 +12,16 @@ import { promptLibrary } from "./prompts";
 import {
   $,
   ActorPresence,
+  type AuthoredStory,
   CameraItemData,
   DEFAULT_SCENE_PRESENTATION,
   BodyItemData,
   PromptItemData,
   type ScenePresentationConfiguration,
 } from "../schema";
-import {
-  MOTION_FRAMES_PER_SECOND,
-  RootConstraint,
-  type MotionSubjectDefinition,
-} from "webgpu-engine/motion";
-import { authoredActor, authoredPromptSpans } from "./default";
+import { RootConstraint, type MotionSubjectDefinition } from "webgpu-engine/motion";
+import { presetCameraShot } from "./cinematography";
+import { authoredActor } from "./default";
 import type { motionTimelineDeclaration } from "./timeline";
 
 export const SCENE_COMPOSITION = "scene";
@@ -39,6 +37,8 @@ export const compositionRevision = (version: TimelineCompositionVersion): string
     : `${version.position.runId}:${version.position.branchId}:${String(version.position.index)}`;
 
 export const actorGroupId = (subject: string) => `actor/${subject}`;
+/** An actor's id is fixed by its row: the production's spare rows carry these ids before a cast. */
+export const actorIdOfRow = (row: number) => `actor-${String(row + 1)}`;
 export const actorSubject = (groupId: string): string | undefined =>
   groupId.startsWith("actor/") ? groupId.slice("actor/".length) : undefined;
 export const actorTrackId = (input: { readonly subject: string; readonly track: string }) =>
@@ -88,8 +88,8 @@ type SceneNode = TimelineNode<
   TimelineSeriesId<typeof motionTimelineDeclaration>,
   TimelineEventKind<typeof motionTimelineDeclaration>
 >;
-export const actorGroup = (subject: MotionSubjectDefinition): SceneNode => {
-  const authored = authoredActor(subject.id, subject.row);
+export const actorGroup = (subject: MotionSubjectDefinition, story: AuthoredStory): SceneNode => {
+  const authored = authoredActor(story, subject.id, subject.row);
   const promptItems = authored.prompts.map((span) => {
     const data = PromptItemData.assert({ prompt: span.prompt });
     return {
@@ -145,57 +145,46 @@ export const bodyTrack = (
   overlap: "allow",
 });
 
-/** Frames before the earliest span of a prompt across the seeded actors, or none when no actor has it. */
-const framesBeforePrompt = (input: {
-  readonly actorCount: number;
-  readonly lead: number;
-  readonly prompt: string;
-}): number | undefined => {
-  const starts = Array.from({ length: input.actorCount }, (_unused, row) =>
-    authoredPromptSpans(row).find((span) => span.prompt === input.prompt)?.start,
-  ).filter((start): start is number => start !== undefined);
-  return starts.length === 0 ? undefined : Math.max(0, Math.min(...starts) - input.lead);
-};
-
+/** The camera track: the story's coverage, each shot a preset framed off its actor's route. */
 export const cameraTrack = (input: {
   readonly durationFrames: number;
-  readonly entities: readonly string[];
   readonly presentation?: ScenePresentationConfiguration["camera"];
+  readonly story: AuthoredStory;
+  readonly subjects: ReadonlyArray<{ readonly id: string; readonly row: number }>;
 }): SceneNode => {
   const presentation = input.presentation ?? DEFAULT_SCENE_PRESENTATION.camera;
-  // The cut to the side view is placed by the story, two seconds before the first duck, so the
-  // duck is seen from the side; a scene without a duck cuts at the authored fraction.
-  const cut =
-    framesBeforePrompt({
-      actorCount: input.entities.length,
-      lead: 2 * MOTION_FRAMES_PER_SECOND,
-      prompt: "Duck under obstacle and rise.",
-    }) ?? Math.floor(input.durationFrames * presentation.cutFraction);
-  const target =
-    presentation.target.kind === "entities"
-      ? { ...presentation.target, entities: input.entities }
-      : presentation.target;
-  const camera = (shot: ScenePresentationConfiguration["camera"]["shots"][number]) =>
-    CameraItemData.assert({ ...shot, kind: "camera", projection: presentation.projection, target });
+  const routes = input.subjects.map(({ id, row }) => ({
+    rootTrack: {
+      items: authoredActor(input.story, id, row).roots.map(({ constraint, tick }) => ({
+        at: { tick },
+        data: constraint,
+      })),
+    },
+    subject: id,
+  }));
   return {
     data: { label: presentation.label },
     id: CAMERA_TRACK,
-    items: [
-      {
-        data: camera(presentation.shots[0]),
-        id: "camera-0",
-        range: { clock: "motionFrame", duration: cut, start: 0 },
-      },
-      {
-        data: camera(presentation.shots[1]),
-        id: "camera-1",
-        range: {
-          clock: "motionFrame",
-          duration: input.durationFrames - cut,
-          start: cut,
+    items: input.story.coverage.flatMap((shot, index) => {
+      const subject = routes[shot.row % routes.length];
+      const end = Math.min(shot.end, input.durationFrames);
+      if (subject === undefined || end <= shot.start) return [];
+      return [
+        {
+          data: CameraItemData.assert(
+            presetCameraShot({
+              preset: shot.preset,
+              projection: presentation.projection,
+              range: { end, start: shot.start },
+              scene: { actors: routes },
+              subject,
+            }),
+          ),
+          id: `camera-${String(index)}`,
+          range: { clock: "motionFrame" as const, duration: end - shot.start, start: shot.start },
         },
-      },
-    ],
+      ];
+    }),
     kind: "track",
     overlap: "forbid",
   };

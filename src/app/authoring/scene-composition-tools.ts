@@ -10,8 +10,10 @@ import {
   SceneHistoryInput,
   SceneWindowInput,
 } from "../../schema";
+import { freeActorRows } from "../../scene/actors";
+import { AUTHORED_STORIES } from "../../scene/default";
+import { sceneProject } from "../../scene/project";
 import { readSceneHistory } from "../../scene/history";
-import { promptLibrary } from "../../scene/prompts";
 import {
   compositionRevision,
   SCENE_COMPOSITION,
@@ -70,14 +72,22 @@ export const sceneCompositionTools = ({
   {
     annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "Read a compact summary of the scene: frame count, each actor's prompt spans and route end, the placed bodies, the camera shots (with their moves), the prompts available with their paces, and the current version. Start here; read the full composition only when you need item identities.",
+      "Read a compact summary of the scene: frame count, each actor's origin, prompt spans, and route end, the placed bodies, the camera shots with their views (mode, distance, pitch, yaw, target, and `to` when a shot moves), the transport (current frame, playing, rate), and the current version. Start here; call list_motion_prompts for the prompt library, and read the full composition only when you need item identities.",
     execute: async (raw) => {
       ReadSceneSummaryInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
       const scene = SceneComposition.assert(readout.composition);
+      const transport = await timeline.transport.state();
+      const { tick: frame } = await timeline.quantize({
+        coordinate: transport.position,
+        grid: { clock: "motionFrame", every: 1 },
+        mode: "floor",
+      });
       return webMcpResult({
-        actors: scene.actors.map(({ promptTrack, rootTrack, subject }) => ({
+        actors: scene.actors.map(({ promptTrack, rootTrack, subject, worldOffset }) => ({
           id: subject,
+          // Where the actor's own frame sits in the world, so a new actor can be placed beside it.
+          origin: worldOffset,
           routeEnd: rootTrack.items.at(-1)?.data.position ?? [0, 0],
           spans: promptTrack.items
             .toSorted((left, right) => left.range.start - right.range.start)
@@ -88,19 +98,28 @@ export const sceneCompositionTools = ({
             })),
         })),
         bodies: scene.bodies.map(({ id, mass, subject, tick }) => ({ id, mass, subject, tick })),
+        // Each shot carries its authored view (mode, distance, pitch, yaw, target, and `to` when it
+        // moves), so an agent can frame a new cut relative to the existing ones.
         cameras: scene.cameraTrack.items
           .toSorted((left, right) => left.range.start - right.range.start)
           .map(({ data, id, range }) => ({
+            ...data,
             end: range.start + range.duration,
             id,
-            label: data.label,
-            mode: data.mode,
-            moves: data.to !== undefined,
             start: range.start,
           })),
         frameCount: scene.frameCount,
         framesPerSecond: MOTION_FRAMES_PER_SECOND,
-        prompts: promptLibrary.list().map(({ pace, prompt }) => ({ pace, prompt })),
+        // How many actors add_actor can still seat before a new scene is needed.
+        freeActorRows: freeActorRows({
+          scene,
+          story: (await sceneProject()).record.definition.story,
+        }),
+        // The built-in stories, in the shape author_scene takes, so an agent can read one and
+        // write its own; control_motion_scene newScene opens one by id.
+        stories: Object.entries(AUTHORED_STORIES).map(([id, story]) => ({ id, ...story })),
+        // Where the playhead is, so a capture or a cut can be placed without a transport read.
+        transport: { frame, playing: transport.playing, rate: transport.rate },
         version: compositionRevision(readout.version),
       });
     },
@@ -114,7 +133,18 @@ export const sceneCompositionTools = ({
         cameras: { items: { additionalProperties: true, type: "object" }, type: "array" },
         frameCount: { type: "integer" },
         framesPerSecond: { type: "number" },
-        prompts: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        freeActorRows: { type: "integer" },
+        stories: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        transport: {
+          additionalProperties: false,
+          properties: {
+            frame: { type: "integer" },
+            playing: { type: "boolean" },
+            rate: { type: "number" },
+          },
+          required: ["frame", "playing", "rate"],
+          type: "object",
+        },
         version: { type: "string" },
       },
       required: [
@@ -123,7 +153,9 @@ export const sceneCompositionTools = ({
         "cameras",
         "frameCount",
         "framesPerSecond",
-        "prompts",
+        "freeActorRows",
+        "stories",
+        "transport",
         "version",
       ],
       type: "object",
@@ -192,14 +224,31 @@ export const sceneCompositionTools = ({
         composition: SCENE_COMPOSITION,
         position: { clock: "motionFrame", tick: input.frame },
       });
-      return webMcpResult({ readout });
+      // The active items only: an agent asked what is happening at this frame, not for the tree.
+      return webMcpResult({
+        active: readout.occurrences.map(({ item, track }) => ({
+          data: item.data,
+          id: item.id,
+          track,
+          ...("range" in item && item.range !== undefined
+            ? { end: item.range.start + item.range.duration, start: item.range.start }
+            : {}),
+          ...("at" in item && item.at !== undefined ? { at: item.at.tick } : {}),
+        })),
+        frame: input.frame,
+        version: compositionRevision(readout.version),
+      });
     },
     inputSchema: webMcpInputSchema(SceneAtInput),
     name: "read_scene_at_frame",
     outputSchema: {
       additionalProperties: false,
-      properties: { readout: { additionalProperties: true, type: "object" } },
-      required: ["readout"],
+      properties: {
+        active: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        frame: { type: "integer" },
+        version: { type: "string" },
+      },
+      required: ["active", "frame", "version"],
       type: "object",
     },
   },
@@ -217,14 +266,33 @@ export const sceneCompositionTools = ({
           start: input.startFrame,
         },
       });
-      return webMcpResult({ readout });
+      // The items that touch the window, each with its identity, track, data, and frames.
+      return webMcpResult({
+        endFrame: input.startFrame + input.durationFrames,
+        items: readout.items.map(({ item, track }) => ({
+          data: item.data,
+          id: item.id,
+          track,
+          ...("range" in item && item.range !== undefined
+            ? { end: item.range.start + item.range.duration, start: item.range.start }
+            : {}),
+          ...("at" in item && item.at !== undefined ? { at: item.at.tick } : {}),
+        })),
+        startFrame: input.startFrame,
+        version: compositionRevision(readout.version),
+      });
     },
     inputSchema: webMcpInputSchema(SceneWindowInput),
     name: "read_scene_window",
     outputSchema: {
       additionalProperties: false,
-      properties: { readout: { additionalProperties: true, type: "object" } },
-      required: ["readout"],
+      properties: {
+        endFrame: { type: "integer" },
+        items: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        startFrame: { type: "integer" },
+        version: { type: "string" },
+      },
+      required: ["endFrame", "items", "startFrame", "version"],
       type: "object",
     },
   },

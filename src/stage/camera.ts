@@ -103,16 +103,20 @@ export const createMotionCamera = (input: {
       surface: input.surface.dimensions,
     },
     resources: {
+      // Authored rows, not simulation state: a backward seek returns simulation resources to their
+      // origin, and the camera edited since open must survive that return.
       frames: res.storageBuffer({
         capacity: rows.frames.length,
         initial: rows.frames,
         lifetime: "persistent",
+        product: { runtime: { origin: "retain" } },
         schema: MotionCameraFrame,
       }),
       targetEntities: res.storageBuffer({
         capacity: Math.max(1, input.program.frameCount * input.presentation.actorCount),
         initial: rows.targetEntities,
         lifetime: "persistent",
+        product: { runtime: { origin: "retain" } },
         schema: d.u32,
       }),
       view: res.storageBuffer({

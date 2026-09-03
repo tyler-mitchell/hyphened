@@ -129,7 +129,12 @@ export const webMcpResult = (value: unknown): WebMcpToolResult => ({
   ) as JsonValue,
 });
 
-export const webMcpResourceResult = (input: {
+/**
+ * An image the agent sees inside the result itself, plus the link where the same image stays
+ * published. A link alone leaves an agent without a fetch path blind to what it captured.
+ */
+export const webMcpImageResult = (input: {
+  readonly data: string;
   readonly mimeType: string;
   readonly name: string;
   readonly uri: string;
@@ -137,6 +142,7 @@ export const webMcpResourceResult = (input: {
 }): WebMcpToolResult => ({
   ...(input.value === undefined ? {} : webMcpResult(input.value)),
   content: [
+    { data: input.data, mimeType: input.mimeType, type: "image" },
     {
       mimeType: input.mimeType,
       name: input.name,

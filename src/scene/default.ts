@@ -2,71 +2,203 @@ import type {
   AuthoredActor,
   AuthoredPromptSpan,
   AuthoredRootConstraint,
+  AuthoredStory,
   BodyItemData,
 } from "../schema";
-import { MOTION_FRAMES_PER_SECOND } from "webgpu-engine/motion";
+import {
+  digestHex,
+  MOTION_FRAMES_PER_SECOND,
+  PUBLISHED_FRAMES_PER_WINDOW,
+} from "webgpu-engine/motion";
 import { DEFAULT_PACE_METRES_PER_SECOND, promptLibrary } from "./prompts";
 
 export const SCENE_SPAN_FRAMES = 680;
+
 // Route vertices every second. Each vertex inside a window's generation horizon is a timed planar
 // root claim; the first vertex beyond it is the future token the model plans toward. One second
 // keeps the timetable tight enough that the actor neither sprints toward a distant goal nor
 // coasts once ahead of it.
 export const WAYPOINT_INTERVAL_FRAMES = MOTION_FRAMES_PER_SECOND;
 
-interface AuthoredScene {
-  /** The planar points the actor passes through, in its own frame and in order. */
-  readonly path: ReadonlyArray<readonly [number, number]>;
-  readonly scenario: ReadonlyArray<{ readonly frames: number; readonly prompt: string }>;
-}
-
 /**
- * Each actor is a path and a scenario. The timetable along the path comes from the prompts'
- * paces, so the path decides where the body goes and turns and the prompts decide how fast it
- * gets there and what it does on the way. The first actor walks, runs straight, ducks, runs on
- * and stands. The second walks longer, jogs five metres to the side during its run, is straight
- * again before its bar, walks the next stretch, and ends with a kick in place.
+ * The built-in stories, in the same shape an agent authors with `author_scene`: each actor is an
+ * origin, a path in its own frame, and a scenario of beats; the coverage is the shots a director
+ * calls, each a preset on one actor by row. Every beat is a caption in the training set's
+ * register and every span begins on a window boundary.
  */
-const AUTHORED_ACTORS: ReadonlyArray<AuthoredScene> = [
-  {
-    path: [
-      [0, 0],
-      [0, -70],
+export const AUTHORED_STORIES: Readonly<Record<string, AuthoredStory>> = {
+  "the-victor": {
+    actors: [
+      {
+        origin: [-1, 0, 0],
+        path: [
+          [0, 0],
+          [0, -34],
+        ],
+        scenario: [
+          { frames: 120, prompt: "A person is walking." },
+          { frames: 80, prompt: "A person is standing still." },
+          { frames: 120, prompt: "A person is sprinting." },
+          { frames: 80, prompt: "A person throws a punch with their right hand." },
+          { frames: 80, prompt: "A person raises both arms in victory." },
+          { frames: 80, prompt: "A person pumps their fist in the air." },
+          { frames: 120, prompt: "A person turns around and walks away." },
+        ],
+      },
+      {
+        origin: [1, 0, -30],
+        path: [
+          [0, 0],
+          [0, 30],
+        ],
+        scenario: [
+          { frames: 160, prompt: "A person is walking." },
+          { frames: 80, prompt: "A person is standing still." },
+          { frames: 80, prompt: "A person is sprinting." },
+          { frames: 80, prompt: "A person stumbles forward and regains their balance." },
+          { frames: 80, prompt: "A person collapses to the ground." },
+          { frames: 80, prompt: "A person kneels down on one knee." },
+          { frames: 120, prompt: "A person is standing still." },
+        ],
+      },
     ],
-    scenario: [
-      { frames: 120, prompt: "A person is walking." },
-      { frames: 200, prompt: "A person is running." },
-      { frames: 80, prompt: "Duck under obstacle and rise." },
-      { frames: 120, prompt: "A person is running." },
-      { frames: 160, prompt: "A person is standing still." },
+    coverage: [
+      { end: 160, preset: "establishing", row: 0, start: 0 },
+      { end: 240, preset: "reveal", row: 0, start: 160 },
+      { end: 320, preset: "hero", row: 0, start: 240 },
+      { end: 400, preset: "low-angle", row: 0, start: 320 },
+      { end: 480, preset: "crane", row: 1, start: 400 },
+      { end: 560, preset: "close-up", row: 0, start: 480 },
+      { end: 680, preset: "follow", row: 0, start: 560 },
     ],
+    frameCount: 680,
+    title: "The Victor",
   },
-  {
-    path: [
-      [0, 0],
-      [0, -14],
-      [5, -24],
-      [5, -70],
+  "the-reunion": {
+    actors: [
+      {
+        origin: [-0.8, 0, 0],
+        path: [
+          [0, 0],
+          [0, -9],
+        ],
+        scenario: [
+          { frames: 160, prompt: "A person is walking." },
+          { frames: 80, prompt: "A person waves with their right hand." },
+          { frames: 80, prompt: "A person is standing still." },
+          { frames: 80, prompt: "A person claps their hands." },
+          { frames: 80, prompt: "A person jumps in place." },
+          { frames: 80, prompt: "A person bows forward at the waist and stands back up." },
+          { frames: 120, prompt: "A person is standing still." },
+        ],
+      },
+      {
+        origin: [0.8, 0, -20],
+        path: [
+          [0, 0],
+          [0, 9],
+        ],
+        scenario: [
+          { frames: 120, prompt: "A person is walking." },
+          { frames: 40, prompt: "A person is standing still." },
+          { frames: 80, prompt: "A person waves with their right hand." },
+          { frames: 80, prompt: "A person jumps in place." },
+          { frames: 80, prompt: "A person claps their hands." },
+          { frames: 160, prompt: "A person dances." },
+          { frames: 120, prompt: "A person salutes with their right hand." },
+        ],
+      },
     ],
-    scenario: [
-      { frames: 160, prompt: "A person is walking." },
-      { frames: 200, prompt: "A person is running." },
-      { frames: 80, prompt: "Duck under obstacle and rise." },
-      { frames: 120, prompt: "A person is walking." },
-      { frames: 120, prompt: "A person is kicking with their right leg." },
+    coverage: [
+      { end: 160, preset: "establishing", row: 0, start: 0 },
+      { end: 240, preset: "tracking", row: 0, start: 160 },
+      { end: 320, preset: "close-up", row: 1, start: 240 },
+      { end: 400, preset: "reveal", row: 0, start: 320 },
+      { end: 480, preset: "crane", row: 1, start: 400 },
+      { end: 560, preset: "close-up", row: 0, start: 480 },
+      { end: 680, preset: "establishing", row: 0, start: 560 },
     ],
+    frameCount: 680,
+    title: "The Reunion",
   },
-];
+  "dance-off": {
+    actors: [
+      {
+        origin: [-1.5, 0, 0],
+        path: [
+          [0, 0],
+          [0, -4],
+        ],
+        scenario: [
+          { frames: 80, prompt: "A person is walking." },
+          { frames: 160, prompt: "A person dances." },
+          { frames: 80, prompt: "A person spins around once." },
+          { frames: 80, prompt: "A person does a cartwheel." },
+          { frames: 160, prompt: "A person dances." },
+          { frames: 120, prompt: "A person raises both arms in victory." },
+        ],
+      },
+      {
+        origin: [1.5, 0, 0],
+        path: [
+          [0, 0],
+          [0, -4],
+        ],
+        scenario: [
+          { frames: 80, prompt: "A person is standing still." },
+          { frames: 160, prompt: "A person dances." },
+          { frames: 80, prompt: "A person jumps in place." },
+          { frames: 80, prompt: "A person flexes both arms." },
+          { frames: 160, prompt: "A person dances." },
+          { frames: 120, prompt: "A person bows forward at the waist and stands back up." },
+        ],
+      },
+    ],
+    coverage: [
+      { end: 80, preset: "establishing", row: 0, start: 0 },
+      { end: 240, preset: "tracking", row: 0, start: 80 },
+      { end: 320, preset: "low-angle", row: 0, start: 240 },
+      { end: 400, preset: "hero", row: 0, start: 320 },
+      { end: 480, preset: "crane", row: 1, start: 400 },
+      { end: 560, preset: "close-up", row: 1, start: 480 },
+      { end: 680, preset: "reveal", row: 0, start: 560 },
+    ],
+    frameCount: 680,
+    title: "Dance-Off",
+  },
+};
 
-const authoredScene = (row: number): AuthoredScene => AUTHORED_ACTORS[row % AUTHORED_ACTORS.length]!;
+export const DEFAULT_STORY = "the-victor";
 
-export const authoredPromptSpans = (row: number): readonly AuthoredPromptSpan[] => {
-  return authoredScene(row).scenario.reduce<readonly AuthoredPromptSpan[]>((spans, scene) => {
-    if (promptLibrary.find(scene.prompt) === undefined) {
-      throw new Error(`scenario prompt outside the prompt library: ${scene.prompt}`);
+/** The built-in stories an agent or the page can start: id and title. */
+export const storyChoices = (): ReadonlyArray<{ readonly id: string; readonly title: string }> =>
+  Object.entries(AUTHORED_STORIES).map(([id, { title }]) => ({ id, title }));
+
+const storyActor = (story: AuthoredStory, row: number) =>
+  story.actors[row % story.actors.length]!;
+
+/** Where the actor of a row stands in the world. */
+export const authoredOrigin = (
+  story: AuthoredStory,
+  row: number,
+): readonly [number, number, number] => storyActor(story, row).origin;
+
+export const authoredPromptSpans = (
+  story: AuthoredStory,
+  row: number,
+): readonly AuthoredPromptSpan[] => {
+  return storyActor(story, row).scenario.reduce<readonly AuthoredPromptSpan[]>((spans, beat) => {
+    if (promptLibrary.find(beat.prompt) === undefined) {
+      throw new Error(`scenario prompt outside the prompt library: ${beat.prompt}`);
     }
     const start = spans.reduce((total, span) => total + span.durationFrames, 0);
-    return [...spans, { durationFrames: scene.frames, prompt: scene.prompt, start }];
+    // One text feature conditions one generated window, so a prompt changes only on a boundary.
+    if (start % PUBLISHED_FRAMES_PER_WINDOW !== 0) {
+      throw new Error(
+        `scenario span "${beat.prompt}" starts at frame ${String(start)}, not on a ${String(PUBLISHED_FRAMES_PER_WINDOW)}-frame window boundary`,
+      );
+    }
+    return [...spans, { durationFrames: beat.frames, prompt: beat.prompt, start }];
   }, []);
 };
 
@@ -154,51 +286,35 @@ export const routeConstraints = (input: {
   });
 };
 
-export const authoredRootConstraints = (row: number): readonly AuthoredRootConstraint[] =>
+export const authoredRootConstraints = (
+  story: AuthoredStory,
+  row: number,
+): readonly AuthoredRootConstraint[] =>
   routeConstraints({
-    frameCount: SCENE_SPAN_FRAMES,
-    path: authoredScene(row).path,
-    spans: authoredPromptSpans(row),
+    frameCount: story.frameCount,
+    path: storyActor(story, row).path,
+    spans: authoredPromptSpans(story, row),
   });
 
-/**
- * The bodies each actor's story asks for, each standing where the actor's route is at a frame
- * into one of its prompt spans: a loose crate a second and a half into the first run, so a
- * running actor meets it, and a fixed bar two and a half seconds into the duck span, past the
- * first full window under that prompt and low enough that a standing actor must duck.
- */
-const AUTHORED_BODIES: ReadonlyArray<{
-  readonly body: Omit<BodyItemData, "subject">;
-  readonly framesIn: number;
-  readonly prompt: string;
-}> = [
-  {
-    body: { elevation: 0.3, halfExtents: [0.3, 0.3, 0.3], label: "crate", mass: 4 },
-    framesIn: 30,
-    prompt: "A person is running.",
-  },
-  {
-    body: { elevation: 1.31, halfExtents: [1.2, 0.06, 0.06], label: "bar", mass: 0 },
-    framesIn: 50,
-    prompt: "Duck under obstacle and rise.",
-  },
-];
+/** A story places no bodies; an agent places props with the body tools. */
+export const authoredBodies = (): ReadonlyArray<{
+  readonly data: BodyItemData;
+  readonly tick: number;
+}> => [];
 
-export const authoredBodies = (
+export const authoredActor = (
+  story: AuthoredStory,
   subject: string,
   row: number,
-): ReadonlyArray<{ readonly data: BodyItemData; readonly tick: number }> => {
-  const spans = authoredPromptSpans(row);
-  return AUTHORED_BODIES.flatMap(({ body, framesIn, prompt }) => {
-    const span = spans.find((candidate) => candidate.prompt === prompt);
-    return span === undefined
-      ? []
-      : [{ data: { ...body, subject }, tick: span.start + framesIn }];
-  });
-};
-
-export const authoredActor = (subject: string, row: number): AuthoredActor => ({
-  prompts: authoredPromptSpans(row),
-  roots: authoredRootConstraints(row),
+): AuthoredActor => ({
+  prompts: authoredPromptSpans(story, row),
+  roots: authoredRootConstraints(story, row),
   subject,
 });
+
+/**
+ * The identity of a story: a digest of its actors, coverage, and span. A scene records the story
+ * it was seeded from, so a built-in story that changed opens a fresh scene.
+ */
+export const authoredStoryIdentity = (story: AuthoredStory): Promise<string> =>
+  digestHex(new TextEncoder().encode(JSON.stringify(story)).buffer as ArrayBuffer);

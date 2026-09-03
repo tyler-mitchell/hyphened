@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  FilePlus2,
   Footprints,
   Hand,
   type LucideIcon,
@@ -30,12 +31,21 @@ import {
   Route,
   Trash2,
   Undo2,
+  UserPlus,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { MOTION_FRAMES_PER_SECOND } from "webgpu-engine/motion";
-import { actorTrack, SCENE_COMPOSITION, sceneCompositionEvents } from "../../scene/composition";
+import { addActorChange, commitSceneChanges } from "../../scene/actors";
+import {
+  actorTrack,
+  SCENE_COMPOSITION,
+  SceneComposition,
+  sceneCompositionEvents,
+} from "../../scene/composition";
+import { AUTHORED_STORIES, DEFAULT_STORY, storyChoices } from "../../scene/default";
 import { observeSceneHistory, type SceneHistoryEntry } from "../../scene/history";
+import { sceneProject, startNewScene } from "../../scene/project";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
 import {
   timelineItemContentStyles,
@@ -112,6 +122,8 @@ const chromeStyles = tv({
     playIcon: "translate-x-px",
     position:
       "min-w-[92px] px-1.5 text-center font-mono text-[9px] tabular-nums text-[var(--editor-text-secondary)]",
+    story:
+      "h-5 max-w-[120px] rounded-[4px] border-0 bg-transparent px-1 text-[10px] text-[var(--editor-text-secondary)] outline-none hover:text-[var(--editor-text)] focus-visible:ring-1 focus-visible:ring-[var(--editor-info)]",
     tool: "rounded-[4px] px-1.5 py-0.5 text-[10px] text-[var(--editor-text-secondary)] hover:text-[var(--editor-text)]",
   },
   variants: {
@@ -149,6 +161,7 @@ const SceneTransportControls = ({
   const playing = useTimelineValue(timeline.state$.transport.playing);
   const command = useTimelineCommand();
   const styles = chromeStyles();
+  const [seed, setSeed] = useState(DEFAULT_STORY);
 
   return (
     <div
@@ -180,6 +193,30 @@ const SceneTransportControls = ({
       >
         <RotateCcw />
       </Button>
+      {/* A fresh scene on a built-in story; the current document stays in the catalog. */}
+      <select
+        aria-label="Story"
+        className={styles.story()}
+        onChange={(event) => setSeed(event.target.value)}
+        value={seed}
+      >
+        {storyChoices().map(({ id, title }) => (
+          <option key={id} value={id}>
+            {title}
+          </option>
+        ))}
+      </select>
+      <Button
+        aria-label="New scene"
+        disabled={command.pending}
+        onClick={() =>
+          void command.run(() => startNewScene({ seed, story: AUTHORED_STORIES[seed]! }))
+        }
+        size="icon-xs"
+        variant="ghost"
+      >
+        <FilePlus2 />
+      </Button>
       <TransportPosition timeline={timeline} />
     </div>
   );
@@ -191,11 +228,19 @@ const TRAIL_LENGTH = 6;
 const SceneHistoryTrail = ({ timeline }: { timeline: TimelineRuntime<MotionDeclaration> }) => {
   const [entries, setEntries] = useState<readonly SceneHistoryEntry[]>([]);
   useEffect(() => {
+    // The subscription replays history from the beginning, so a re-run of this effect (React's
+    // development double mount) starts from an empty trail, and a replaced subscription that is
+    // still closing delivers nothing.
+    const mount = { live: true };
+    setEntries([]);
     const opening = observeSceneHistory({
-      handle: (entry) => setEntries((current) => [...current, entry].slice(-TRAIL_LENGTH)),
+      handle: (entry) => {
+        if (mount.live) setEntries((current) => [...current, entry].slice(-TRAIL_LENGTH));
+      },
       timeline,
     });
     return () => {
+      mount.live = false;
       void opening.then((subscription) => subscription.close());
     };
   }, [timeline]);
@@ -210,8 +255,9 @@ const SceneHistoryTrail = ({ timeline }: { timeline: TimelineRuntime<MotionDecla
   );
 };
 
-const SceneEditingControls = () => {
+const SceneEditingControls = ({ timeline }: { timeline: TimelineRuntime<MotionDeclaration> }) => {
   const editor = useTimelineCompositionContext<MotionDeclaration>();
+  const command = useTimelineCommand();
   const styles = chromeStyles();
   return (
     <div className={styles.group()}>
@@ -250,6 +296,30 @@ const SceneEditingControls = () => {
         variant="ghost"
       >
         <Trash2 />
+      </Button>
+      {/* A new actor on a spare row, standing two metres right of the cast; the agent tool is
+          the same operation with a path and beats. */}
+      <Button
+        aria-label="Add actor"
+        disabled={command.pending}
+        onClick={() =>
+          void command.run(async () => {
+            const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
+            const scene = SceneComposition.assert(readout.composition);
+            const project = await sceneProject();
+            const right = Math.max(0, ...scene.actors.map(({ worldOffset }) => worldOffset[0]));
+            const { change } = await addActorChange({
+              origin: [right + 2, 0, 0],
+              scene,
+              story: project.record.definition.story,
+            });
+            await commitSceneChanges({ author: "editor/add-actor", changes: [change], timeline });
+          })
+        }
+        size="icon-xs"
+        variant="ghost"
+      >
+        <UserPlus />
       </Button>
       <Toolbar.Root aria-label="Timeline editing tools" className="flex items-center gap-0.5">
         {(["select", "slip", "slide", "split"] as const).map((tool) => (
@@ -324,7 +394,7 @@ const SceneTimelineSurface = ({
         <div className={header.primary()}>
           <span className={header.label()}>Scene</span>
           <SceneTransportControls restart={restart} timeline={timeline} />
-          <SceneEditingControls />
+          <SceneEditingControls timeline={timeline} />
         </div>
         <div className={header.status()}>
           <SceneHistoryTrail timeline={timeline} />

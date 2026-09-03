@@ -60,7 +60,7 @@ export const bodyTools = ({
 }): readonly RegisteredWebMcpTool[] => [
   {
     description:
-      "Place or replace one body in the scene: a box with half extents in metres and a mass (0 is fixed, like a bar; above 0 is loose, like a crate), standing where an actor's route is at a frame, its centre `elevation` above the ground. It enters physics at once: a loose body spawns, and a fixed body moves or resizes in place.",
+      "Place or replace one body in the scene: a box with half extents in metres and a mass (0 is fixed, like a bar; above 0 is loose, like a crate), standing where an actor's route is at a frame, its centre `elevation` above the ground (omit it to rest the box on the ground; give half the height plus a gap for a bar to duck under). It enters physics at once: a loose body spawns, and a fixed body moves or resizes in place.",
     execute: async (raw) => {
       const input = SetBodyInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -79,7 +79,8 @@ export const bodyTools = ({
       const value = {
         at: { clock: "motionFrame" as const, tick: input.tick },
         data: BodyItemData.assert({
-          elevation: input.elevation,
+          // A body without an elevation rests on the ground: its centre sits half its height up.
+          elevation: input.elevation ?? input.halfExtents[1],
           halfExtents: input.halfExtents,
           label: input.label,
           mass: input.mass,

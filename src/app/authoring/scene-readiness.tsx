@@ -26,15 +26,26 @@ const readDevice = async () => {
  * the browser can run it at all. Every other operation belongs to the scene and is absent until the
  * scene opens, so without this an agent cannot tell a booting app from one that will never boot.
  */
-export const SceneReadinessTool = ({ readiness }: { readonly readiness: SceneReadiness }) => {
+export const SceneReadinessTool = ({
+  readiness,
+  reset,
+}: {
+  readonly readiness: SceneReadiness;
+  /** Why this scene opened fresh, when a saved scene was discarded or its story changed. */
+  readonly reset?: string;
+}) => {
   useAgentTools([
     {
       annotations: { idempotentHint: true, readOnlyHint: true },
       description:
-        "Report whether the motion scene has opened, and what the browser's WebGPU support is. While the status is opening, the scene's own operations are not yet registered. A device without WebGPU or without the required shader-f16 feature will never open the scene.",
+        "Report whether the motion scene has opened, and what the browser's WebGPU support is. While the status is opening, the scene's own operations are not yet registered. A device without WebGPU or without the required shader-f16 feature will never open the scene. A reset field appears when the saved scene was discarded and a new one opened in its place, which is how a fresh browser is told apart from a document that was thrown away.",
       execute: async () => {
         SceneReadinessInput.assert({});
-        return webMcpResult({ ...readiness, device: await readDevice() });
+        return webMcpResult({
+          ...readiness,
+          device: await readDevice(),
+          ...(reset === undefined ? {} : { reset }),
+        });
       },
       inputSchema: webMcpInputSchema(SceneReadinessInput),
       name: "read_scene_readiness",
@@ -52,6 +63,7 @@ export const SceneReadinessTool = ({ readiness }: { readonly readiness: SceneRea
             type: "object",
           },
           reason: { type: "string" },
+          reset: { type: "string" },
           status: { enum: ["failed", "open", "opening"], type: "string" },
         },
         required: ["device", "status"],
