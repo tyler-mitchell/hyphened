@@ -1,6 +1,6 @@
-# Ardy
+# Hyphened
 
-Ardy is a browser application that generates human motion with a learned model on WebGPU and plays it on actors in a physical scene. A person and an agent share one timeline: prompt spans say what each actor does, a path says where it goes, bodies stand in its way, and camera cuts frame it. Through WebMCP, an agent reads the scene, writes a whole story, changes what an actor does and where it goes, adds and removes actors, places bodies and cameras, controls playback, and captures a labeled contact sheet of the result.
+Hyphened is a browser application that generates human motion with a learned model on WebGPU and plays it on actors in a physical scene. A person and an agent share one timeline: prompt spans say what each actor does, a path says where it goes, bodies stand in its way, and camera cuts frame it. Through WebMCP, an agent reads the scene, writes a whole story, changes what an actor does and where it goes, adds and removes actors, places bodies and cameras, controls playback, and captures a labeled contact sheet of the result.
 
 Live application: `<LIVE URL>`  
 Demo video: `<YOUTUBE URL>`  
