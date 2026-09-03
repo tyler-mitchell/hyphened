@@ -18,6 +18,13 @@ const NATIVE_WEBMCP = typeof document !== "undefined" && document.modelContext !
 
 const KEY_STORAGE = "ardy.agent.key";
 
+/**
+ * Which provider a key belongs to. Anthropic keys carry their own prefix, so the key names its
+ * provider and a visitor pastes one without choosing anything. Anything else is treated as OpenAI,
+ * which is the other provider the route forwards to.
+ */
+const providerOfKey = (key: string) => (key.startsWith("sk-ant-") ? "anthropic" : "openai");
+
 const readStoredKey = () => {
   try {
     return localStorage.getItem(KEY_STORAGE) ?? "";
@@ -76,7 +83,7 @@ export const AgentPanel = () => {
         setTurns((current) => [...current, turn]);
       },
       prompt: asked,
-      provider: "anthropic",
+      provider: providerOfKey(key.trim()),
     }).catch((cause: unknown) => {
       setTurns((current) => [
         ...current,

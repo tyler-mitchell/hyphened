@@ -203,11 +203,22 @@ const readSchema = (schema: string | undefined): unknown => {
   }
 };
 
-/** The page's tools, in the shape the model expects them. */
+/**
+ * The page's tools. The polyfill is imported here as well as by the registration, because a
+ * visitor can send a message while the scene is still opening, and a module import is cached: this
+ * awaits the same promise rather than doing the work twice. An empty surface is reported instead of
+ * being answered around, since an agent with no tools gives a confident useless answer.
+ */
 const readTools = async () => {
+  await import("@mcp-b/global");
   const context = document.modelContext;
-  if (context === undefined) return [];
+  if (context === undefined) {
+    throw new Error("This browser exposes no WebMCP surface, so the page's tools cannot be called.");
+  }
   const tools = await context.getTools();
+  if (tools.length === 0) {
+    throw new Error("The page's tools are not registered yet. Wait for the scene to open, then ask again.");
+  }
   return tools.map((tool) => ({
     description: tool.description,
     input_schema: readSchema(tool.inputSchema),
