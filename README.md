@@ -98,6 +98,6 @@ This is a TanStack Start application; the server output is a Nitro Node server a
 
 ## License
 
-The code in this repository is licensed under the terms in `LICENSE`.
+The code in this repository is licensed under the GNU Affero General Public License, version 3; see `LICENSE`.
 
 The packages under `vendor/` are proprietary and licensed only for use with this application; see the license file inside each tarball. The motion model derives from NVIDIA's ARDY, Apache-2.0, and the text encoder from McGill NLP's LLM2Vec, MIT; see `NOTICE`.
