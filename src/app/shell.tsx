@@ -5,7 +5,7 @@ import { WebGpuCanvas, useEngine, type WebGpuCanvasSessionFactory } from "webgpu
 import { MotionAgentObservability } from "./authoring/motion-agent-observability";
 import { SceneReadinessTool, type SceneReadiness } from "./authoring/scene-readiness";
 import { SceneTimeline } from "./timeline/scene-timeline";
-import { openMotionProduction, restartMotionScene } from "../stage/open";
+import { openMotionProduction } from "../stage/open";
 import { sceneProject, type SceneProject } from "../scene/project";
 import { motionTimelineDeclaration } from "../scene/timeline";
 import { SCENE_SPAN_FRAMES } from "../scene/default";
@@ -15,18 +15,13 @@ const sceneStyles = tv({
     root: "relative isolate flex h-dvh w-screen flex-col overflow-hidden bg-slate-200",
     canvas: "block min-h-0 w-full flex-1 cursor-crosshair touch-none outline-none",
     timeline: "flex h-72 shrink-0 flex-col",
+    failure: "m-auto max-w-prose p-6 font-mono text-sm text-red-700",
   },
 });
 
 const BoundSceneTimeline = () => {
-  const { timeline } = useEngine<typeof motionTimelineDeclaration>();
-  return (
-    <SceneTimeline
-      durationFrames={SCENE_SPAN_FRAMES}
-      restart={() => restartMotionScene(timeline)}
-      timeline={timeline}
-    />
-  );
+  const { restart, timeline } = useEngine<typeof motionTimelineDeclaration>();
+  return <SceneTimeline durationFrames={SCENE_SPAN_FRAMES} restart={restart} timeline={timeline} />;
 };
 
 /** Rendered only once the session is open, so mounting it is the fact that the scene opened. */
@@ -65,6 +60,9 @@ export const App = () => {
   return (
     <main className={styles.root()}>
       <SceneReadinessTool readiness={readiness} />
+      {readiness.status === "failed" ? (
+        <p className={styles.failure()}>The scene did not open: {readiness.reason}</p>
+      ) : null}
       {project === undefined ? null : (
         <WebGpuCanvas
           className={styles.canvas()}

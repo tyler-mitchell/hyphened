@@ -160,6 +160,10 @@ export const openMotionProduction = async (input: {
     rig: binding.value,
   });
   const subscriptions = new Set<TimelineEventSubscription>();
+  // The reconstruction is defined once the engine is open; until then a restart is the bare one.
+  const production = {
+    restart: (): Promise<void> => input.timeline.transport.restart().then(() => undefined),
+  };
   const openedBodies = bodyInits(composition);
   const openedFixed = openedBodies.filter(({ init }) => isFixed(init));
   const openedLoose = openedBodies.filter(({ init }) => !isFixed(init));
@@ -369,7 +373,7 @@ export const openMotionProduction = async (input: {
       // resets the device tables to their opened state. The scene is reconstructed from the
       // current composition: each actor's request is compiled again and admitted with the restart,
       // and every body the composition holds beyond the opened set spawns again.
-      restarts.set(timeline, async () => {
+      production.restart = async () => {
         await closeLowering();
         const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
         const scene = SceneComposition.assert(readout.composition);
@@ -398,22 +402,11 @@ export const openMotionProduction = async (input: {
           ),
         );
         await subscribeLowering();
-      });
+      };
     },
+    restart: () => production.restart(),
     close: async () => {
-      restarts.delete(input.timeline);
       await Promise.all([...subscriptions].map((subscription) => subscription.close()));
     },
   };
 };
-
-const restarts = new WeakMap<
-  TimelineRuntime<typeof motionTimelineDeclaration>,
-  () => Promise<void>
->();
-
-/** Restart the scene as the production reconstructs it; a timeline without a production restarts bare. */
-export const restartMotionScene = (
-  timeline: TimelineRuntime<typeof motionTimelineDeclaration>,
-): Promise<void> =>
-  restarts.get(timeline)?.() ?? timeline.transport.restart().then(() => undefined);

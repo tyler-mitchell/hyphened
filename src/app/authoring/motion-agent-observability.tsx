@@ -19,7 +19,7 @@ import { webMcpInputSchema, webMcpResourceResult, type RegisteredWebMcpTool } fr
 
 /** Register the app's semantic browser-agent operations. */
 export const MotionAgentObservability = () => {
-  const { engine, timeline } = useEngine<typeof motionTimelineDeclaration>();
+  const { engine, restart, timeline } = useEngine<typeof motionTimelineDeclaration>();
   const synchronize = async () => {
     const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
     const rows = compileMotionCameraRows(
@@ -52,7 +52,7 @@ export const MotionAgentObservability = () => {
     ...cameraCompositionTools({ synchronize, timeline }),
     ...motionSpanTools({ synchronize, timeline }),
     ...sceneCompositionTools({ synchronize, timeline }),
-    ...transportTools({ timeline }),
+    ...transportTools({ restart, timeline }),
     {
       annotations: { readOnlyHint: true },
       description:

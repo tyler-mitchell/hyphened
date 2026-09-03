@@ -17,7 +17,7 @@ const GradioFileUpdate = type({ value: { url: "string" } });
  * `ARDY_TEXT_ENCODER_AUTH` is `user:password` when the service requires a login.
  */
 const encodeOnServer = createServerFn({ method: "POST" })
-  .inputValidator((raw: unknown) => PromptInput.assert(raw))
+  .validator((raw: unknown) => PromptInput.assert(raw))
   .handler(async ({ data }) => {
     const url = process.env.ARDY_TEXT_ENCODER_URL;
     if (url === undefined) throw new Error("ARDY_TEXT_ENCODER_URL is not set on the server.");

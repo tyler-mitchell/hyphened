@@ -20,9 +20,12 @@ export interface RegisteredWebMcpTool {
   readonly outputSchema?: JsonSchemaForInference;
 }
 
+// Draft-07 writes a tuple as an `items` array. The 2020-12 form (`prefixItems` with `items: false`)
+// is refused by the WebMCP polyfill's schema check, which unregisters the tool.
 export const webMcpInputSchema = <$>(schema: BaseType<unknown, $>): InputSchema =>
   schema.toJsonSchema({
     fallback: ({ base }) => base,
+    target: "draft-07",
   }) as InputSchema;
 
 const unsafePathSegments = new Set(["__proto__", "constructor", "prototype"]);

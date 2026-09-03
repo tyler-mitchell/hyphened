@@ -1,9 +1,4 @@
-import {
-  openTimeline,
-  TimelineHistoryIncompatibleError,
-  type TimelineRuntime,
-} from "@coretime/core";
-import { openIndexedDbTimelineJournal } from "@coretime/core/indexeddb";
+import { openTimeline, type TimelineRuntime } from "@coretime/core";
 import {
   openTimelineProjectCatalog,
   type TimelineProjectCatalog,
@@ -11,12 +6,21 @@ import {
 } from "@coretime/project";
 import { openBrowserProjectDatabase } from "@coretime/project/browser";
 import { type } from "arktype";
+import { arktypeToSurqlTable } from "arktype-adapters/surrealdb";
+import { orm, t, table } from "surqlize";
 
-import { motionTextEmbedding, type TextEmbedding } from "webgpu-engine/motion";
+import {
+  motionTextEmbedding,
+  motionTextEmbeddingSource,
+  type TextEmbedding,
+} from "webgpu-engine/motion";
+import { sceneAuthorship } from "./history";
 import { promptLibrary } from "./prompts";
 import { motionTimelineDeclaration } from "./timeline";
 
+/** The scene document: its identity plus the authored compositions saved from the last commit. */
 const SceneProjectDefinition = type({
+  "compositions?": "Record<string, object>",
   format: "'ardy/scene'",
   id: "string >= 1",
   schemaVersion: "1",
@@ -27,12 +31,20 @@ type SceneProjectDefinition = typeof SceneProjectDefinition.infer;
 const SCOPE = { format: "ardy/scene", schemaVersion: 1 } as const;
 const DATABASE = "ardy";
 const EMBEDDING_TABLE = "embedding";
+const RESTORE_TRANSACTION = "ardy:scene:restore";
 
-/** One encoded prompt row kept beside the catalog, so a persisted scene's prompts stay admissible. */
-const EmbeddingRecord = type({
-  embedding: "unknown",
-  pace: "number >= 0",
-  prompt: "string > 0",
+/**
+ * One encoded prompt row kept beside the catalog, keyed by the row digest. The encoder identity
+ * is the pinned one, so only the prompt, its pace, and the feature values are stored.
+ */
+const embeddingSchema = arktypeToSurqlTable({
+  schema: { pace: "number >= 0", prompt: "string > 0", values: "surql.array<number>" },
+  table: EMBEDDING_TABLE,
+});
+const embeddingTable = table(EMBEDDING_TABLE, {
+  pace: t.number(),
+  prompt: t.string(),
+  values: t.array(t.number()),
 });
 
 export interface SceneProject {
@@ -47,23 +59,6 @@ export interface SceneProject {
   readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
 }
 
-const runId = (project: string) => `ardy:scene:${project}:${crypto.randomUUID()}`;
-
-const openRun = async (run: string) => {
-  const journal = await openIndexedDbTimelineJournal({ database: DATABASE, id: run });
-  try {
-    const timeline = await openTimeline({
-      declaration: motionTimelineDeclaration,
-      run,
-      storage: { journal: journal.journal, kind: "journal" },
-    });
-    return { journal, timeline };
-  } catch (cause) {
-    await journal.close();
-    throw cause;
-  }
-};
-
 const createScene = async (catalog: TimelineProjectCatalog<SceneProjectDefinition>) => {
   const definition = {
     format: "ardy/scene",
@@ -71,16 +66,18 @@ const createScene = async (catalog: TimelineProjectCatalog<SceneProjectDefinitio
     schemaVersion: 1,
     title: "Scene",
   } as const;
-  const record = await catalog.create({ definition, run: runId(definition.id) });
+  const record = await catalog.create({ definition, run: `ardy:scene:${definition.id}` });
   if (record === undefined) throw new Error("The scene project could not be created.");
   await catalog.setActive({ project: definition.id });
   return record;
 };
 
 /**
- * The browser's durable scene: the project catalog lives in SurrealDB with an IndexedDB snapshot,
- * the composition history in the Core Time IndexedDB journal of the project's run. The active
- * project reopens; when none exists a new one is created and the scene seeds on open.
+ * The browser's durable scene is its document: the project catalog in SurrealDB, with an IndexedDB
+ * snapshot, holds the authored compositions and the encoded prompts. Playback is live-only, so
+ * every open starts a fresh in-memory run seeded from the saved document, and every authored
+ * commit saves the document back. The active project reopens; when none exists a new one is
+ * created and the scene seeds on open.
  */
 export const openSceneProject = async (): Promise<SceneProject> => {
   const database = await openBrowserProjectDatabase({
@@ -89,25 +86,24 @@ export const openSceneProject = async (): Promise<SceneProject> => {
     namespace: "coretime",
     snapshot: { database: "ardy-scene-projects" },
   });
-  const [stored] = await database.client.query<[unknown[]]>(`SELECT * FROM ${EMBEDDING_TABLE}`);
-  for (const row of stored ?? []) {
-    const record = EmbeddingRecord(row);
-    if (record instanceof type.errors) continue;
-    const embedding = motionTextEmbedding.Admission(record.embedding);
+  await database.client.query(embeddingSchema.surql);
+  const embeddings = orm(database.client, embeddingTable);
+  for (const row of await embeddings.select(EMBEDDING_TABLE)) {
+    const embedding = motionTextEmbedding.Admission({
+      identity: { kind: "encoded", sha256: String(row.id.id) },
+      prompt: row.prompt,
+      source: motionTextEmbeddingSource,
+      values: row.values,
+    });
     if (embedding instanceof type.errors) continue;
-    promptLibrary.admit({ embedding, pace: record.pace });
+    promptLibrary.admit({ embedding, pace: row.pace });
   }
   const saveEmbedding: SceneProject["saveEmbedding"] = async (input) => {
-    await database.client.query(
-      `UPSERT type::thing($table, $id) CONTENT { embedding: $embedding, pace: $pace, prompt: $prompt }`,
-      {
-        embedding: input.embedding,
-        id: input.embedding.identity.sha256,
-        pace: input.pace,
-        prompt: input.embedding.prompt,
-        table: EMBEDDING_TABLE,
-      },
-    );
+    await embeddings.upsert(EMBEDDING_TABLE, input.embedding.identity.sha256).content({
+      pace: input.pace,
+      prompt: input.embedding.prompt,
+      values: input.embedding.values,
+    });
     await database.persist();
   };
   const catalog = await openTimelineProjectCatalog({
@@ -120,23 +116,42 @@ export const openSceneProject = async (): Promise<SceneProject> => {
     scope: SCOPE,
   });
   const record = (await catalog.active()) ?? (await createScene(catalog));
-  const opened = await openRun(record.run).catch(async (cause: unknown) => {
-    if (!(cause instanceof TimelineHistoryIncompatibleError)) throw cause;
-    // History from an older build stays under its run; the project moves to a new run.
-    const moved = await catalog.saveRun({ project: record.definition.id, run: runId(record.definition.id) });
-    if (moved === undefined) throw cause;
-    return openRun(moved.run);
+  const timeline = await openTimeline({
+    declaration: motionTimelineDeclaration,
+    run: record.run,
+    storage: { kind: "memory" },
+  });
+  const saved = record.definition.compositions;
+  if (saved !== undefined) {
+    await timeline.composition.initialize({
+      compositions: saved as Parameters<
+        typeof timeline.composition.initialize
+      >[0]["compositions"],
+      id: RESTORE_TRANSACTION,
+    });
+  }
+  // Every authored transaction (the seed, an editor edit, an agent edit, undo, redo) saves the
+  // document; the restore itself is the document and is not saved again.
+  const saving = await timeline.events.subscribe({
+    from: "current",
+    handle: async ({ transaction }) => {
+      if (transaction.id === RESTORE_TRANSACTION || sceneAuthorship(transaction.id) === undefined) {
+        return;
+      }
+      const { compositions } = await timeline.composition.readAll();
+      await catalog.saveDefinition({ definition: { ...record.definition, compositions } });
+    },
   });
   return {
     catalog,
     close: async () => {
-      await opened.timeline.close();
-      await opened.journal.close();
+      await saving.close();
+      await timeline.close();
       await database.close();
     },
     record,
     saveEmbedding,
-    timeline: opened.timeline,
+    timeline,
   };
 };
 
@@ -155,7 +170,7 @@ export const startNewScene = async (): Promise<void> => {
   location.reload();
 };
 
-// Database, journal, and timeline ownership cannot move across a hot module replacement.
+// Database and timeline ownership cannot move across a hot module replacement.
 if (import.meta.hot) {
   import.meta.hot.accept(() => location.reload());
 }

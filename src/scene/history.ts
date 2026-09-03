@@ -12,8 +12,9 @@ export interface SceneHistoryEntry {
 
 /**
  * Authorship lives in the transaction id. Agent tools commit `agent/<tool>/<uuid>`, the timeline
- * editor commits `timeline:composition:<operation>:<uuid>`, and the seed is `ardy:scene:initialize`.
- * Every other transaction (schedules, publications) is not an authored edit.
+ * editor commits `timeline:composition:<operation>:<uuid>`, and the scene itself commits the seed
+ * (`ardy:scene:initialize`) or the saved document it reopens (`ardy:scene:restore`). Every other
+ * transaction (schedules, publications) is not an authored edit.
  */
 export const sceneAuthorship = (
   id: string,
@@ -23,6 +24,7 @@ export const sceneAuthorship = (
     return { action: id.split(":")[2] ?? "edit", author: "editor" };
   }
   if (id === "ardy:scene:initialize") return { action: "seed", author: "scene" };
+  if (id === "ardy:scene:restore") return { action: "restore", author: "scene" };
   return undefined;
 };
 

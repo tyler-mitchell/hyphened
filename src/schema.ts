@@ -345,6 +345,7 @@ export const $ = type.module({
   TimelineCameraTarget: "TimelineCameraEntityTarget | CameraPointTarget",
   TimelineCameraTrackItem: {
     data: "CameraItemData",
+    id: "string >= 1",
     range: {
       clock: "'motionFrame'",
       duration: "number.integer > 0",

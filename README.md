@@ -50,7 +50,7 @@ All tools register from the top-level document with `document.modelContext.regis
 | `control_motion_scene` | control | Play, pause, seek, step, rate, restart, or start a new scene |
 | `capture_motion_temporal_sheet` | read | A labeled contact sheet from the live renderer at exact frames |
 
-Agent commits carry an author in their transaction identity, `agent/<tool>/<uuid>`, and the timeline header shows the last authored transactions live. The authored scene persists in the browser across reloads: a project catalog in SurrealDB WASM names the scene's run, and its composition history lives in the Core Time IndexedDB journal.
+Agent commits carry an author in their transaction identity, `agent/<tool>/<uuid>`, and the timeline header shows the last authored transactions live. The authored scene persists in the browser across reloads: a project catalog in SurrealDB WASM holds the scene document and the encoded prompts, and every open seeds a fresh Core Time run from it. Undo and the authorship trail span the page session.
 
 ## Try it
 
@@ -86,6 +86,8 @@ node .output/server/index.mjs
 ```
 
 This is a TanStack Start application; the server output is a Nitro Node server and deploys to any host with a Node runtime.
+
+`encode_motion_prompt` needs the exact text encoder, which runs as a separate service on a GPU machine. Point the app at it with `ARDY_TEXT_ENCODER_URL` (and `ARDY_TEXT_ENCODER_AUTH` as `user:password` when the service requires a login); see `.env.example`. Without it the pinned prompts still work and the tool reports the encoder unreachable.
 
 ## License
 

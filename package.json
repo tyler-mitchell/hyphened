@@ -27,6 +27,7 @@
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "surqlize": "catalog:",
     "surrealdb": "catalog:",
     "tailwindcss": "catalog:",
     "typegpu": "catalog:",

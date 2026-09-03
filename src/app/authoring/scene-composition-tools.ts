@@ -11,6 +11,7 @@ import {
   SceneWindowInput,
 } from "../../schema";
 import { readSceneHistory } from "../../scene/history";
+import { promptLibrary } from "../../scene/prompts";
 import {
   compositionRevision,
   SCENE_COMPOSITION,
@@ -69,7 +70,7 @@ export const sceneCompositionTools = ({
   {
     annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "Read a compact summary of the scene: frame count, each actor's prompt spans and route end, the placed bodies, the camera cuts, and the current version. Start here; read the full composition only when you need item identities.",
+      "Read a compact summary of the scene: frame count, each actor's prompt spans and route end, the placed bodies, the camera shots (with their moves), the prompts available with their paces, and the current version. Start here; read the full composition only when you need item identities.",
     execute: async (raw) => {
       ReadSceneSummaryInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -87,13 +88,19 @@ export const sceneCompositionTools = ({
             })),
         })),
         bodies: scene.bodies.map(({ id, mass, subject, tick }) => ({ id, mass, subject, tick })),
-        cameras: scene.cameraTrack.items.map(({ data, range }) => ({
-          end: range.start + range.duration,
-          mode: data.mode,
-          start: range.start,
-        })),
+        cameras: scene.cameraTrack.items
+          .toSorted((left, right) => left.range.start - right.range.start)
+          .map(({ data, id, range }) => ({
+            end: range.start + range.duration,
+            id,
+            label: data.label,
+            mode: data.mode,
+            moves: data.to !== undefined,
+            start: range.start,
+          })),
         frameCount: scene.frameCount,
         framesPerSecond: MOTION_FRAMES_PER_SECOND,
+        prompts: promptLibrary.list().map(({ pace, prompt }) => ({ pace, prompt })),
         version: compositionRevision(readout.version),
       });
     },
@@ -107,9 +114,18 @@ export const sceneCompositionTools = ({
         cameras: { items: { additionalProperties: true, type: "object" }, type: "array" },
         frameCount: { type: "integer" },
         framesPerSecond: { type: "number" },
+        prompts: { items: { additionalProperties: true, type: "object" }, type: "array" },
         version: { type: "string" },
       },
-      required: ["actors", "bodies", "cameras", "frameCount", "framesPerSecond", "version"],
+      required: [
+        "actors",
+        "bodies",
+        "cameras",
+        "frameCount",
+        "framesPerSecond",
+        "prompts",
+        "version",
+      ],
       type: "object",
     },
   },
@@ -215,7 +231,7 @@ export const sceneCompositionTools = ({
   {
     annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "Read who authored the scene: every authored transaction in order, with its author (agent, editor, or the scene seed), the action (the tool or editor operation), and its journal step. Undo and redo appear as their own entries.",
+      "Read who authored the scene in this page session: every authored transaction in order, with its author (agent, editor, or the scene itself for the seed or the reopened document), the action (the tool or editor operation), and its journal step. Undo and redo appear as their own entries.",
     execute: async (raw) => {
       ReadSceneHistoryInput.assert(raw);
       return webMcpResult({ entries: await readSceneHistory(timeline) });
@@ -246,7 +262,7 @@ export const sceneCompositionTools = ({
   },
   {
     description:
-      "Undo or redo the most recent authored scene edit through the same durable history the timeline editor uses. Returns the resulting composition version.",
+      "Undo or redo the most recent authored scene edit through the same history the timeline editor uses; history spans this page session. Returns the resulting composition version.",
     execute: async (raw) => {
       const input = SceneHistoryInput.assert(raw);
       const identity = { id: input.transactionId };
