@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiAgentRouteImport } from './routes/api.agent'
 import { Route as ApiMotionModelArtifactRouteImport } from './routes/api.motion-model.$artifact'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentRoute = ApiAgentRouteImport.update({
+  id: '/api/agent',
+  path: '/api/agent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMotionModelArtifactRoute = ApiMotionModelArtifactRouteImport.update({
@@ -25,27 +31,31 @@ const ApiMotionModelArtifactRoute = ApiMotionModelArtifactRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/motion-model/$artifact': typeof ApiMotionModelArtifactRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/motion-model/$artifact': typeof ApiMotionModelArtifactRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/motion-model/$artifact': typeof ApiMotionModelArtifactRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/motion-model/$artifact'
+  fullPaths: '/' | '/api/agent' | '/api/motion-model/$artifact'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/motion-model/$artifact'
-  id: '__root__' | '/' | '/api/motion-model/$artifact'
+  to: '/' | '/api/agent' | '/api/motion-model/$artifact'
+  id: '__root__' | '/' | '/api/agent' | '/api/motion-model/$artifact'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiAgentRoute: typeof ApiAgentRoute
   ApiMotionModelArtifactRoute: typeof ApiMotionModelArtifactRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent': {
+      id: '/api/agent'
+      path: '/api/agent'
+      fullPath: '/api/agent'
+      preLoaderRoute: typeof ApiAgentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/motion-model/$artifact': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiAgentRoute: ApiAgentRoute,
   ApiMotionModelArtifactRoute: ApiMotionModelArtifactRoute,
 }
 export const routeTree = rootRouteImport

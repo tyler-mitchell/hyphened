@@ -4,6 +4,7 @@ import type { MotionParameterProgress } from "webgpu-engine/motion";
 import { WebGpuCanvas, useEngine, type WebGpuCanvasSessionFactory } from "webgpu-engine/react";
 
 import { MotionAgentObservability } from "./authoring/motion-agent-observability";
+import { AgentPanel } from "./agent/agent-panel";
 import { MotionLibraryPanel } from "./library/motion-library";
 import {
   readDevice,
@@ -199,6 +200,7 @@ export const App = () => {
           <SceneOpened onOpen={opened} />
           <MotionAgentObservability />
           <MotionLibraryPanel />
+          <AgentPanel />
           <div className={styles.letterbox({ className: "top-0" })} />
           <div className={styles.letterbox({ className: "bottom-72" })} />
           <div className={styles.timeline()}>
