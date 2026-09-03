@@ -1,5 +1,5 @@
 import { tv } from "@hyphened/ui/tv";
-import { useNavigate } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import type { MotionParameterProgress } from "webgpu-engine/motion";
 import { WebGpuCanvas, useEngine, type WebGpuCanvasSessionFactory } from "webgpu-engine/react";
@@ -15,7 +15,6 @@ import {
   type SceneReadiness,
 } from "./authoring/scene-readiness";
 import { SceneTimeline, type StartScene } from "./timeline/scene-timeline";
-import { Route } from "./routes/index";
 import { AUTHORED_STORIES } from "../scene/default";
 import { openMotionProduction } from "../stage/open";
 import {
@@ -44,6 +43,12 @@ const sceneStyles = tv({
     loadingBar: "h-full rounded-full bg-slate-600 transition-[width] duration-300",
   },
 });
+
+/**
+ * The index route's own hooks, reached by id. The route module imports this file for its component,
+ * so importing the route object back would close a cycle and leave `Route` undefined at evaluation.
+ */
+const indexRoute = getRouteApi("/");
 
 /** Whole megabytes, the unit a download reads in. */
 const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(0);
@@ -99,7 +104,7 @@ export const App = () => {
   const [progress, setProgress] = useState<MotionParameterProgress>();
   // The address is read once, at open. It is the visitor's intent for this visit; after that the
   // scene leads and the address follows it.
-  const { story: requested } = Route.useSearch();
+  const { story: requested } = indexRoute.useSearch();
   const navigate = useNavigate();
   useEffect(() => {
     const mount = { live: true };
