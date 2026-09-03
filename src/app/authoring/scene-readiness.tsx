@@ -1,3 +1,5 @@
+import type { MotionParameterProgress } from "webgpu-engine/motion";
+
 import { SceneReadinessInput } from "../../schema";
 import { useAgentTools } from "./use-agent-tool";
 import { webMcpInputSchema, webMcpResult } from "./webmcp";
@@ -9,7 +11,14 @@ export type SceneReadiness =
 
 const REQUIRED_FEATURE = "shader-f16";
 
-const readDevice = async () => {
+/** What this browser can offer the scene. The scene needs all three. */
+export interface SceneDevice {
+  readonly adapter: boolean;
+  readonly requiredFeature: boolean;
+  readonly webgpu: boolean;
+}
+
+export const readDevice = async (): Promise<SceneDevice> => {
   if (navigator.gpu === undefined) {
     return { adapter: false, requiredFeature: false, webgpu: false };
   }
@@ -21,15 +30,40 @@ const readDevice = async () => {
   };
 };
 
+/** Each way the browser can fall short, in the order a reader can act on. */
+const UNSUPPORTED_DEVICE = [
+  {
+    missing: ({ webgpu }: SceneDevice) => !webgpu,
+    reason:
+      "This browser does not support WebGPU, which this scene needs. Open the page in Google Chrome on a desktop computer.",
+  },
+  {
+    missing: ({ adapter }: SceneDevice) => !adapter,
+    reason:
+      "This browser supports WebGPU but no graphics adapter is available. Make sure hardware acceleration is on, then reload.",
+  },
+  {
+    missing: ({ requiredFeature }: SceneDevice) => !requiredFeature,
+    reason: `This browser does not have the ${REQUIRED_FEATURE} feature that this scene needs. Open the page in Google Chrome on a desktop computer.`,
+  },
+] as const;
+
+/** Why this browser cannot run the scene, or nothing when it can. */
+export const unsupportedDevice = (device: SceneDevice): string | undefined =>
+  UNSUPPORTED_DEVICE.find(({ missing }) => missing(device))?.reason;
+
 /**
  * Registers the one tool that answers whether the scene is usable yet, and when it is not, whether
  * the browser can run it at all. Every other operation belongs to the scene and is absent until the
  * scene opens, so without this an agent cannot tell a booting app from one that will never boot.
  */
 export const SceneReadinessTool = ({
+  progress,
   readiness,
   reset,
 }: {
+  /** How much of the motion checkpoint has arrived, while it is still arriving. */
+  readonly progress?: MotionParameterProgress;
   readonly readiness: SceneReadiness;
   /** Why this scene opened fresh, when a saved scene was discarded or its story changed. */
   readonly reset?: string;

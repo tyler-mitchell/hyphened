@@ -13,6 +13,7 @@ import {
   initialRequestFor,
   loadMotionProvider,
   loadTextEmbedding,
+  type MotionParameterProgress,
   MOTION_PROMPT_LIBRARY,
   ONE_MOTION_FRAME,
   PUBLISHED_FRAMES_PER_WINDOW,
@@ -92,6 +93,8 @@ const physicsScheduleCommand = (input: {
 
 /** Acquire authored data and assets, then return one framework-owned production session. */
 export const openMotionProduction = async (input: {
+  /** Called while the checkpoint streams, so the page can show the wait instead of a blank stage. */
+  readonly onProgress?: (progress: MotionParameterProgress) => void;
   readonly presentation?: ScenePresentationConfigurationInput;
   readonly render?: MotionRenderConfigurationInput;
   /** The story a new scene seeds from; a reopened document already has its children. */
@@ -211,6 +214,7 @@ export const openMotionProduction = async (input: {
     system,
     onOpen: async ({ engine, timeline }) => {
       const parameters = await provider.loadParameters({
+        ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
         parameters: system.metadata.provider.parameters,
         runtime: engine,
       });

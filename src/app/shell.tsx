@@ -3,10 +3,23 @@ import { useCallback, useEffect, useState } from "react";
 import { WebGpuCanvas, useEngine, type WebGpuCanvasSessionFactory } from "webgpu-engine/react";
 
 import { MotionAgentObservability } from "./authoring/motion-agent-observability";
-import { SceneReadinessTool, type SceneReadiness } from "./authoring/scene-readiness";
-import { SceneTimeline } from "./timeline/scene-timeline";
+import { MotionLibraryPanel } from "./library/motion-library";
+import {
+  readDevice,
+  SceneReadinessTool,
+  unsupportedDevice,
+  type SceneDevice,
+  type SceneReadiness,
+} from "./authoring/scene-readiness";
+import { SceneTimeline, type StartScene } from "./timeline/scene-timeline";
 import { openMotionProduction } from "../stage/open";
-import { observeSceneProject, sceneProject, type SceneProject } from "../scene/project";
+import {
+  observeSceneProject,
+  sceneProject,
+  startNewScene,
+  type SceneProject,
+  type SceneStoryChoice,
+} from "../scene/project";
 import { motionTimelineDeclaration } from "../scene/timeline";
 
 const sceneStyles = tv({
@@ -17,6 +30,7 @@ const sceneStyles = tv({
     letterbox: "pointer-events-none absolute inset-x-0 h-[7%] bg-black",
     timeline: "flex h-72 shrink-0 flex-col",
     failure: "m-auto max-w-prose p-6 font-mono text-sm text-red-700",
+    notice: "m-auto max-w-prose p-6 text-center text-base leading-relaxed text-slate-700",
   },
 });
 
@@ -28,9 +42,25 @@ const describeFailure = (cause: unknown): string =>
       )
     : String(cause);
 
-const BoundSceneTimeline = ({ durationFrames }: { readonly durationFrames: number }) => {
+const BoundSceneTimeline = ({
+  durationFrames,
+  seed,
+  startScene,
+}: {
+  readonly durationFrames: number;
+  readonly seed?: string;
+  readonly startScene: StartScene;
+}) => {
   const { restart, timeline } = useEngine<typeof motionTimelineDeclaration>();
-  return <SceneTimeline durationFrames={durationFrames} restart={restart} timeline={timeline} />;
+  return (
+    <SceneTimeline
+      durationFrames={durationFrames}
+      restart={restart}
+      seed={seed}
+      startScene={startScene}
+      timeline={timeline}
+    />
+  );
 };
 
 /** Rendered only once the session is open, so mounting it is the fact that the scene opened. */
@@ -47,8 +77,18 @@ export const App = () => {
   // The durable scene (project catalog and journal) opens once, outside React, and its timeline
   // is supplied to the canvas so history survives a reload.
   const [project, setProject] = useState<SceneProject>();
+  // What this browser can offer. Undefined until the probe answers, so the canvas waits rather
+  // than mounting a session that a browser without the required feature cannot open.
+  const [device, setDevice] = useState<SceneDevice>();
   useEffect(() => {
     const mount = { live: true };
+    void readDevice().then((probed) => {
+      if (!mount.live) return;
+      setDevice(probed);
+      // A browser that cannot run the scene has failed already; it will never reach an open.
+      const reason = unsupportedDevice(probed);
+      if (reason !== undefined) setReadiness({ reason, status: "failed" });
+    });
     sceneProject().then(
       (opened) => {
         if (mount.live) setProject(opened);
@@ -70,6 +110,21 @@ export const App = () => {
     };
   }, []);
   const opened = useCallback(() => setReadiness({ status: "open" }), []);
+  // The switch replaces the project, so the canvas and every control inside it unmount. Only the
+  // shell outlives that, so the shell owns the outcome: a switch that never reaches a scene is
+  // reported here instead of dying with the control that asked for it.
+  const startScene = useCallback(
+    (choice: SceneStoryChoice) => {
+      setReadiness({ status: "opening" });
+      return startNewScene(choice).then(
+        () => undefined,
+        (cause: unknown) => setReadiness({ reason: describeFailure(cause), status: "failed" }),
+      );
+    },
+    [],
+  );
+  // Undefined while the probe runs and when the browser can run the scene; a sentence otherwise.
+  const unsupported = device === undefined ? undefined : unsupportedDevice(device);
   const openSession: WebGpuCanvasSessionFactory<typeof motionTimelineDeclaration> = async ({
     timeline,
   }) => {
@@ -88,10 +143,11 @@ export const App = () => {
   return (
     <main className={styles.root()}>
       <SceneReadinessTool readiness={readiness} reset={project?.reset} />
-      {readiness.status === "failed" ? (
+      {unsupported === undefined ? null : <p className={styles.notice()}>{unsupported}</p>}
+      {readiness.status === "failed" && unsupported === undefined ? (
         <p className={styles.failure()}>The scene did not open: {readiness.reason}</p>
       ) : null}
-      {project === undefined ? null : (
+      {project === undefined || device === undefined || unsupported !== undefined ? null : (
         <WebGpuCanvas
           key={project.record.definition.id}
           className={styles.canvas()}
@@ -101,10 +157,15 @@ export const App = () => {
         >
           <SceneOpened onOpen={opened} />
           <MotionAgentObservability />
+          <MotionLibraryPanel />
           <div className={styles.letterbox({ className: "top-0" })} />
           <div className={styles.letterbox({ className: "bottom-72" })} />
           <div className={styles.timeline()}>
-            <BoundSceneTimeline durationFrames={project.record.definition.story.frameCount} />
+            <BoundSceneTimeline
+              durationFrames={project.record.definition.story.frameCount}
+              seed={project.record.definition.seed}
+              startScene={startScene}
+            />
           </div>
         </WebGpuCanvas>
       )}

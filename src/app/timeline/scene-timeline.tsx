@@ -45,7 +45,7 @@ import {
 } from "../../scene/composition";
 import { AUTHORED_STORIES, DEFAULT_STORY, storyChoices } from "../../scene/default";
 import { observeSceneHistory, type SceneHistoryEntry } from "../../scene/history";
-import { sceneProject, startNewScene } from "../../scene/project";
+import { sceneProject, type SceneStoryChoice } from "../../scene/project";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
 import {
   timelineItemContentStyles,
@@ -73,6 +73,9 @@ import {
 type MotionDeclaration = typeof motionTimelineDeclaration;
 
 export type RestartScene = () => Promise<void>;
+
+/** Open a new scene on a story. The shell owns the outcome, so this never rejects. */
+export type StartScene = (choice: SceneStoryChoice) => Promise<void>;
 
 type ItemTone = NonNullable<Parameters<typeof timelineItemStyles>[0]>["tone"];
 
@@ -153,15 +156,21 @@ const TransportPosition = ({ timeline }: { timeline: TimelineRuntime<MotionDecla
 
 const SceneTransportControls = ({
   restart,
+  seed,
+  startScene,
   timeline,
 }: {
   restart: RestartScene;
+  seed?: string;
+  startScene: StartScene;
   timeline: TimelineRuntime<MotionDeclaration>;
 }) => {
   const playing = useTimelineValue(timeline.state$.transport.playing);
   const command = useTimelineCommand();
   const styles = chromeStyles();
-  const [seed, setSeed] = useState(DEFAULT_STORY);
+  // The picker starts on the story of the scene that is open, so after a switch it names what is
+  // playing instead of the default. A scene an agent authored has no built-in story to name.
+  const [choice, setChoice] = useState(seed ?? DEFAULT_STORY);
 
   return (
     <div
@@ -197,8 +206,8 @@ const SceneTransportControls = ({
       <select
         aria-label="Story"
         className={styles.story()}
-        onChange={(event) => setSeed(event.target.value)}
-        value={seed}
+        onChange={(event) => setChoice(event.target.value)}
+        value={choice}
       >
         {storyChoices().map(({ id, title }) => (
           <option key={id} value={id}>
@@ -210,7 +219,7 @@ const SceneTransportControls = ({
         aria-label="New scene"
         disabled={command.pending}
         onClick={() =>
-          void command.run(() => startNewScene({ seed, story: AUTHORED_STORIES[seed]! }))
+          void command.run(() => startScene({ seed: choice, story: AUTHORED_STORIES[choice]! }))
         }
         size="icon-xs"
         variant="ghost"
@@ -371,9 +380,13 @@ const SceneTrackRow = ({
 
 const SceneTimelineSurface = ({
   restart,
+  seed,
+  startScene,
   timeline,
 }: {
   restart: RestartScene;
+  seed?: string;
+  startScene: StartScene;
   timeline: TimelineRuntime<MotionDeclaration>;
 }) => {
   const editor = useTimelineCompositionContext<MotionDeclaration>();
@@ -393,7 +406,12 @@ const SceneTimelineSurface = ({
       <Timeline.Header className={header.root()}>
         <div className={header.primary()}>
           <span className={header.label()}>Scene</span>
-          <SceneTransportControls restart={restart} timeline={timeline} />
+          <SceneTransportControls
+            restart={restart}
+            seed={seed}
+            startScene={startScene}
+            timeline={timeline}
+          />
           <SceneEditingControls timeline={timeline} />
         </div>
         <div className={header.status()}>
@@ -498,10 +516,14 @@ const SceneTimelineSurface = ({
 export const SceneTimeline = ({
   durationFrames,
   restart,
+  seed,
+  startScene,
   timeline,
 }: {
   durationFrames: number;
   restart: RestartScene;
+  seed?: string;
+  startScene: StartScene;
   timeline: Parameters<typeof Timeline.Root<MotionDeclaration>>[0]["timeline"];
 }) => (
   <Timeline.ErrorBoundary
@@ -536,7 +558,12 @@ export const SceneTimeline = ({
         rootComposition={SCENE_COMPOSITION}
         snapping={{ distance: 10 }}
       >
-        <SceneTimelineSurface restart={restart} timeline={timeline} />
+        <SceneTimelineSurface
+          restart={restart}
+          seed={seed}
+          startScene={startScene}
+          timeline={timeline}
+        />
       </Timeline.Composition>
     </Timeline.Root>
   </Timeline.ErrorBoundary>
