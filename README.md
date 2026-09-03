@@ -87,7 +87,7 @@ Every change an agent makes is a versioned transaction in the same history the p
 
 ## Run it yourself
 
-Requirements: Node 22 or later, pnpm, a browser with WebGPU and `shader-f16`.
+Requirements: Node 24 (see `.node-version`), pnpm 11.8, a browser with WebGPU and `shader-f16`.
 
 ```sh
 pnpm install
