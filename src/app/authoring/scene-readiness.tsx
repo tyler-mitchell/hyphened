@@ -1,4 +1,4 @@
-import { SceneReadinessInput } from "learned-motion/schema";
+import { SceneReadinessInput } from "../../schema";
 import { useAgentTools } from "./use-agent-tool";
 import { webMcpInputSchema, webMcpResult } from "./webmcp";
 

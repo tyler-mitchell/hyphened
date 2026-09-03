@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { MOTION_FRAMES_PER_SECOND } from "learned-motion/motion";
+import { MOTION_FRAMES_PER_SECOND } from "webgpu-engine/motion";
 import { actorTrack, SCENE_COMPOSITION, sceneCompositionEvents } from "../../scene/composition";
 import { observeSceneHistory, type SceneHistoryEntry } from "../../scene/history";
 import type { motionTimelineDeclaration } from "../../scene/timeline";

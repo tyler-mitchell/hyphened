@@ -2,18 +2,20 @@ import type { HumanoidRigAssets } from "../rig/skin";
 import type { MotionRigBinding } from "../rig/binding";
 import { SCENE_COMPOSITION } from "../scene/composition";
 import {
-  MotionCameraProgram,
-  type MotionCameraProgram as MotionCameraProgramData,
+  INITIAL_PRODUCT_SEED,
   MotionCompilationProgram,
   type MotionCompilationProgram as MotionCompilationProgramData,
+  MotionPresentationProgram,
+} from "webgpu-engine/motion";
+import {
+  MotionCameraProgram,
+  type MotionCameraProgram as MotionCameraProgramData,
   MotionPipelineProgram,
   type MotionPipelineProgram as MotionPipelineProgramData,
-  MotionPresentationProgram,
   MotionRenderConfiguration,
   MotionRenderProgram,
   type MotionSceneComposition,
-  INITIAL_PRODUCT_SEED,
-} from "learned-motion/schema";
+} from "../schema";
 
 export const compileMotionCameraProgram = (input: {
   readonly composition: MotionSceneComposition;

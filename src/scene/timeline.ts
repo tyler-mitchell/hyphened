@@ -1,14 +1,14 @@
 import { defineTimeline } from "@coretime/core";
 
-import { MOTION_REQUEST_SCHEDULE, MOTION_SUBJECT_SCHEDULE } from "learned-motion/motion";
-import { MOTION_DRIVER_POLICY, MOTION_FRAMES_PER_SECOND } from "learned-motion/motion";
+import { MOTION_REQUEST_SCHEDULE, MOTION_SUBJECT_SCHEDULE } from "webgpu-engine/motion";
+import { MOTION_DRIVER_POLICY, MOTION_FRAMES_PER_SECOND } from "webgpu-engine/motion";
 import {
   PHYSICS_RETIRE_SCHEDULE,
   PHYSICS_SPAWN_SCHEDULE,
   PHYSICS_STATIC_UPDATE_SCHEDULE,
   PHYSICS_SUBSTEP_CLOCK,
   PHYSICS_SUBSTEPS_PER_FRAME,
-} from "learned-motion/schema";
+} from "../schema";
 import {
   MOTION_ACTOR_EVENT,
   MOTION_BODY_EVENT,

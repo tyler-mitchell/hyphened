@@ -4,11 +4,11 @@ import { Readable } from "node:stream";
 
 import { createFileRoute } from "@tanstack/react-router";
 
-import { runtimeCheckpoint } from "learned-motion/provider/checkpoint/runtime";
+import { runtimeCheckpoint } from "webgpu-engine/motion";
 import {
   resolveInstalledRuntimeArtifact,
   resolveInstalledModelRoot,
-} from "learned-motion/provider/checkpoint/catalog.server";
+} from "webgpu-engine/motion/node";
 
 interface SatisfiedByteRange {
   readonly end: number;

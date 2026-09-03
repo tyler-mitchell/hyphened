@@ -6,7 +6,7 @@ import {
   motionTextEmbedding,
   motionTextEmbeddingSource,
   type TextEmbedding,
-} from "learned-motion/provider/embedding";
+} from "webgpu-engine/motion";
 
 const PromptInput = type({ prompt: "string > 0" });
 const GradioFileUpdate = type({ value: { url: "string" } });

@@ -14,13 +14,15 @@ import {
   ActorPresence,
   CameraItemData,
   DEFAULT_SCENE_PRESENTATION,
-  type MotionSubjectDefinition,
   BodyItemData,
   PromptItemData,
-  RootConstraint,
   type ScenePresentationConfiguration,
-} from "learned-motion/schema";
-import { MOTION_FRAMES_PER_SECOND } from "learned-motion/motion";
+} from "../schema";
+import {
+  MOTION_FRAMES_PER_SECOND,
+  RootConstraint,
+  type MotionSubjectDefinition,
+} from "webgpu-engine/motion";
 import { authoredActor, authoredPromptSpans } from "./default";
 import type { motionTimelineDeclaration } from "./timeline";
 

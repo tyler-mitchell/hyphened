@@ -6,15 +6,20 @@ import {
   type PhysicsBodyInit,
 } from "webgpu-engine";
 
-import { createMotionCandidate } from "learned-motion/motion/candidate";
-import { createProductMotionPresentation } from "learned-motion/motion/presentation";
-import { createMotionProduct } from "learned-motion/motion/product";
-import { MOTION_REQUEST_SCHEDULE, MOTION_SUBJECT_SCHEDULE } from "learned-motion/motion";
-import { createMotionSubjectState } from "learned-motion/motion/subject";
-import type { TextEmbedding } from "learned-motion/provider/embedding";
-import { HISTORY_FRAME_CAPACITY } from "learned-motion/provider/generation/layout";
-import { ARDY_MOTION_CONTACT_COUNT, createMotionProvider } from "learned-motion/provider/system";
-import type { MotionPipelineProgram, MotionSubjectDefinition } from "learned-motion/schema";
+import {
+  ARDY_MOTION_CONTACT_COUNT,
+  createMotionCandidate,
+  createMotionProduct,
+  createMotionProvider,
+  createMotionSubjectState,
+  createProductMotionPresentation,
+  HISTORY_FRAME_CAPACITY,
+  MOTION_REQUEST_SCHEDULE,
+  MOTION_SUBJECT_SCHEDULE,
+  type MotionSubjectDefinition,
+  type TextEmbedding,
+} from "webgpu-engine/motion";
+import type { MotionPipelineProgram } from "../schema";
 import { createMotionBodies } from "./bodies";
 import { createMotionCamera, MOTION_CAMERA_COMMAND, MOTION_CAMERA_ID } from "./camera";
 import { createMotionRenderer, MOTION_CAPTURE_RESOURCE_KEY } from "./renderer";

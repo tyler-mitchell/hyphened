@@ -10,14 +10,16 @@ import { loadHumanoidRigAssets } from "../rig/skin";
 import { bindMotionRig } from "../rig/binding";
 import {
   initialRequestFor,
+  loadMotionProvider,
+  loadTextEmbedding,
+  MOTION_PROMPT_LIBRARY,
+  ONE_MOTION_FRAME,
+  PUBLISHED_FRAMES_PER_WINDOW,
   replanRequestFor,
   requestScheduleCommand,
   subjectAdmissionCommands,
-} from "learned-motion/motion/schedule";
+} from "webgpu-engine/motion";
 import { MOTION_FRAMES_PER_SECOND, motionTimelineDeclaration } from "../scene/timeline";
-import { loadMotionProvider } from "learned-motion/provider/load";
-import { loadTextEmbedding, MOTION_PROMPT_LIBRARY } from "learned-motion/provider/embedding";
-import { PUBLISHED_FRAMES_PER_WINDOW } from "learned-motion/provider/generation/layout";
 import {
   actorGroup,
   bodyTrack,
@@ -34,13 +36,12 @@ import {
   type MotionRenderConfigurationInput,
   INITIAL_SUBJECT_COUNT,
   type MotionSceneComposition,
-  ONE_MOTION_FRAME,
   PHYSICS_RETIRE_SCHEDULE,
   PHYSICS_SPAWN_SCHEDULE,
   PHYSICS_STATIC_UPDATE_SCHEDULE,
   ScenePresentationConfiguration,
   type ScenePresentationConfigurationInput,
-} from "learned-motion/schema";
+} from "../schema";
 import { authoredBodies, SCENE_SPAN_FRAMES } from "../scene/default";
 import { promptLibrary } from "../scene/prompts";
 import { compileMotionCompilation, compileMotionPipelineProgram } from "./compile";

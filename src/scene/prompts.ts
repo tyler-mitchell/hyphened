@@ -1,4 +1,4 @@
-import { MOTION_PROMPT_LIBRARY, type TextEmbedding } from "learned-motion/provider/embedding";
+import { MOTION_PROMPT_LIBRARY, type TextEmbedding } from "webgpu-engine/motion";
 
 /** One prompt an actor can be conditioned on: its feature row identity and its route pace. */
 export interface MotionPrompt {

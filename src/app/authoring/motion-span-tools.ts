@@ -1,6 +1,6 @@
 import type { TimelineCompositionChange, TimelineRuntime } from "@coretime/core";
 
-import { PUBLISHED_FRAMES_PER_WINDOW } from "learned-motion/provider/generation/layout";
+import { PUBLISHED_FRAMES_PER_WINDOW } from "webgpu-engine/motion";
 import { sceneProject } from "../../scene/project";
 import { encodeMotionPrompt } from "../../scene/prompt-encoder";
 import { promptLibrary } from "../../scene/prompts";
@@ -20,7 +20,7 @@ import {
   ListMotionPromptsInput,
   PromptItemData,
   SetMotionSpanInput,
-} from "learned-motion/schema";
+} from "../../schema";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
 type MotionTimeline = TimelineRuntime<typeof motionTimelineDeclaration>;

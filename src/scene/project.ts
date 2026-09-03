@@ -12,7 +12,7 @@ import {
 import { openBrowserProjectDatabase } from "@coretime/project/browser";
 import { type } from "arktype";
 
-import { motionTextEmbedding, type TextEmbedding } from "learned-motion/provider/embedding";
+import { motionTextEmbedding, type TextEmbedding } from "webgpu-engine/motion";
 import { promptLibrary } from "./prompts";
 import { motionTimelineDeclaration } from "./timeline";
 

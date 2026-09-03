@@ -7,7 +7,7 @@ import {
   SCENE_COMPOSITION,
   sceneCompositionEvents,
 } from "../../scene/composition";
-import { RemoveCameraTimelineItemInput, SetCameraTimelineItemInput } from "learned-motion/schema";
+import { RemoveCameraTimelineItemInput, SetCameraTimelineItemInput } from "../../schema";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
 type MotionTimeline = TimelineRuntime<typeof motionTimelineDeclaration>;
