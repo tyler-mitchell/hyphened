@@ -23,6 +23,7 @@ This project existed before August 25, 2026. Everything WebMCP was added during 
 | 2026-09-02 | `<sha>` | Authored routes and per-actor scenarios; bodies as composition entities |
 | 2026-09-02 | `<sha>` | `set_motion_span` |
 | 2026-09-03 | `<sha>` | Replan on edit, `set_actor_path`, `set_body`, `remove_body`, `read_scene_summary`, agent authorship, readiness |
+| 2026-09-03 | `<sha>` | Camera moves, the durable scene, the prompt library with `list_motion_prompts` and `encode_motion_prompt`, `read_scene_history` and the authorship trail, `newScene` |
 
 The motion model runtime, the timeline substrate, and the engine existed before the period. They are licensed dependencies of this application, vendored under `vendor/`, and are not part of the open-source code here.
 
@@ -37,16 +38,19 @@ All tools register from the top-level document with `document.modelContext.regis
 | `read_scene_composition` | read | The full authored composition |
 | `read_scene_at_frame` | read | What is active at one frame |
 | `read_scene_window` | read | Items in a frame range |
+| `read_scene_history` | read | Every authored transaction with its author (agent, editor, or the seed) and action |
+| `list_motion_prompts` | read | The prompts an actor can be conditioned on, each with its route pace |
+| `encode_motion_prompt` | edit | A new caption encoded by the exact text encoder and added to the library; it persists with the scene |
 | `set_motion_span` | edit | One actor, one prompt, one frame range; the actor replans from the next window |
 | `set_actor_path` | edit | One actor's path; its route is recomputed from its spans' paces |
 | `set_body` / `remove_body` | edit | A loose or fixed box on an actor's route at a frame; it enters physics at once |
-| `set_camera_timeline_item` / `remove_camera_timeline_item` | edit | Camera shots on the camera track |
+| `set_camera_timeline_item` / `remove_camera_timeline_item` | edit | Camera shots on the camera track; a shot with `to` moves to that view over its frames |
 | `edit_scene_composition` | edit | Any canonical composition change, previewed and committed against the exact version |
 | `undo_scene_composition` | edit | Undo or redo through the same durable history the person uses |
-| `control_motion_scene` | control | Play, pause, seek, step, rate, restart |
+| `control_motion_scene` | control | Play, pause, seek, step, rate, restart, or start a new scene |
 | `capture_motion_temporal_sheet` | read | A labeled contact sheet from the live renderer at exact frames |
 
-Agent commits carry an author in their transaction identity, `agent/<tool>/<uuid>`.
+Agent commits carry an author in their transaction identity, `agent/<tool>/<uuid>`, and the timeline header shows the last authored transactions live. The authored scene persists in the browser across reloads: a project catalog in SurrealDB WASM names the scene's run, and its composition history lives in the Core Time IndexedDB journal.
 
 ## Try it
 
