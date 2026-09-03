@@ -31,10 +31,11 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { MOTION_FRAMES_PER_SECOND } from "../../motion";
 import { actorTrack, SCENE_COMPOSITION, sceneCompositionEvents } from "../../scene/composition";
+import { observeSceneHistory, type SceneHistoryEntry } from "../../scene/history";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
 import {
   timelineItemContentStyles,
@@ -184,6 +185,31 @@ const SceneTransportControls = ({
   );
 };
 
+const TRAIL_LENGTH = 6;
+
+/** The last authored transactions with their authors, read from the scene's own journal. */
+const SceneHistoryTrail = ({ timeline }: { timeline: TimelineRuntime<MotionDeclaration> }) => {
+  const [entries, setEntries] = useState<readonly SceneHistoryEntry[]>([]);
+  useEffect(() => {
+    const opening = observeSceneHistory({
+      handle: (entry) => setEntries((current) => [...current, entry].slice(-TRAIL_LENGTH)),
+      timeline,
+    });
+    return () => {
+      void opening.then((subscription) => subscription.close());
+    };
+  }, [timeline]);
+  return (
+    <ol aria-label="Authorship trail" className="flex items-center gap-2 text-xs">
+      {entries.map((entry) => (
+        <li className="whitespace-nowrap" key={entry.id}>
+          <span className="opacity-60">{entry.author}</span> {entry.action}
+        </li>
+      ))}
+    </ol>
+  );
+};
+
 const SceneEditingControls = () => {
   const editor = useTimelineCompositionContext<MotionDeclaration>();
   const styles = chromeStyles();
@@ -301,6 +327,7 @@ const SceneTimelineSurface = ({
           <SceneEditingControls />
         </div>
         <div className={header.status()}>
+          <SceneHistoryTrail timeline={timeline} />
           {editor.errorMessage === undefined ? null : <span>{editor.errorMessage}</span>}
         </div>
       </Timeline.Header>

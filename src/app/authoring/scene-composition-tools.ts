@@ -4,11 +4,13 @@ import { MOTION_FRAMES_PER_SECOND, type motionTimelineDeclaration } from "../../
 import {
   EditSceneCompositionInput,
   ReadSceneCompositionInput,
+  ReadSceneHistoryInput,
   ReadSceneSummaryInput,
   SceneAtInput,
   SceneHistoryInput,
   SceneWindowInput,
 } from "../../schema";
+import { readSceneHistory } from "../../scene/history";
 import {
   compositionRevision,
   SCENE_COMPOSITION,
@@ -207,6 +209,38 @@ export const sceneCompositionTools = ({
       additionalProperties: false,
       properties: { readout: { additionalProperties: true, type: "object" } },
       required: ["readout"],
+      type: "object",
+    },
+  },
+  {
+    annotations: { idempotentHint: true, readOnlyHint: true },
+    description:
+      "Read who authored the scene: every authored transaction in order, with its author (agent, editor, or the scene seed), the action (the tool or editor operation), and its journal step. Undo and redo appear as their own entries.",
+    execute: async (raw) => {
+      ReadSceneHistoryInput.assert(raw);
+      return webMcpResult({ entries: await readSceneHistory(timeline) });
+    },
+    inputSchema: webMcpInputSchema(ReadSceneHistoryInput),
+    name: "read_scene_history",
+    outputSchema: {
+      additionalProperties: false,
+      properties: {
+        entries: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              action: { type: "string" },
+              author: { enum: ["agent", "editor", "scene"], type: "string" },
+              id: { type: "string" },
+              step: { type: "integer" },
+            },
+            required: ["action", "author", "id", "step"],
+            type: "object",
+          },
+          type: "array",
+        },
+      },
+      required: ["entries"],
       type: "object",
     },
   },

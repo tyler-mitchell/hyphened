@@ -439,6 +439,7 @@ export const $ = type.module({
     camera: "ScenePresentationCamera",
   },
   SceneReadinessInput: {},
+  ReadSceneHistoryInput: {},
   ListMotionPromptsInput: {},
   EncodeMotionPromptInput: { "pace?": "number >= 0", prompt: "NonEmptyString" },
   PlanarPoint: ["Finite", "Finite"],
@@ -834,6 +835,7 @@ export const DEFAULT_SCENE_PRESENTATION = ScenePresentationConfiguration.assert(
 
 export const SetCameraTimelineItemInput = $.CameraTimelineItemInput;
 export const ListMotionPromptsInput = $.ListMotionPromptsInput;
+export const ReadSceneHistoryInput = $.ReadSceneHistoryInput;
 export const EncodeMotionPromptInput = $.EncodeMotionPromptInput;
 export const RemoveCameraTimelineItemInput = $.RemoveCameraTimelineItemInput;
 export const ControlMotionInput = $.ControlMotionInput;
