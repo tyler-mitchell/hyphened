@@ -93,7 +93,16 @@ Requirements: Node 24 (see `.node-version`), pnpm 11.8, a browser with WebGPU an
 pnpm install
 ```
 
-The motion model is not in this repository. Download the f16 runtime profile (seven files, about 380 MB) from `<MODEL URL>` into `.data/models/runtime/webgpu-f16/`, or set `ARDY_MODEL_ROOT` to a directory that contains `runtime/webgpu-f16/`.
+The motion model is not in this repository. Download the f16 runtime profile — a `manifest.json` and six shards, about 380 MB — into `.data/models/runtime/webgpu-f16/`:
+
+```sh
+mkdir -p .data/models/runtime/webgpu-f16 && cd $_
+for f in manifest.json shard-000.bin shard-001.bin shard-002.bin shard-003.bin shard-004.bin shard-005.bin; do
+  curl -O "https://model.hyphened.app/runtime/webgpu-f16/$f"
+done
+```
+
+Or set `ARDY_MODEL_ROOT` to any directory that contains `runtime/webgpu-f16/`. The deployed site reads the same files over `ARDY_MODEL_BASE_URL` instead of from disk.
 
 ```sh
 pnpm dev
