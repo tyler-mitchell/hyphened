@@ -55,48 +55,64 @@ export const DEFAULT_PACE_METRES_PER_SECOND = 1.3;
 // the pace sets its intensity: the body follows the root motion it is conditioned on. The
 // reference's capture under the running prompt runs at 2.3 to 3.1 m/s, a jog; a demand the text
 // branch cannot produce is filled by text-free motion and reads as a hunched sprint.
-const PINNED_PROMPT_PACES: Readonly<Record<string, number>> = {
-  "A person bows forward at the waist and stands back up.": 0,
-  "A person claps their hands.": 0,
-  "A person collapses to the ground.": 0,
-  "A person is kicking with their right leg.": 0,
-  "A person is running.": 3.4,
+/** What a pinned prompt publishes beside its row: the same facts a generated entry carries. */
+type PinnedPrompt = Omit<MotionPrompt, "embedding" | "identity" | "prompt" | "source">;
+
+const STANDING = { enter: "stand", exit: "stand" } as const;
+
+// Each pace is the timetable the route claims for its prompt. The prompt picks the gait family and
+// the pace sets its intensity: the body follows the root motion it is conditioned on. The
+// reference's capture under the running prompt runs at 2.3 to 3.1 m/s, a jog; a demand the text
+// branch cannot produce is filled by text-free motion and reads as a hunched sprint.
+//
+// Four of these leave the actor off their feet. Until they said so, an author chaining after a
+// collapse, a sit, a kneel or a crouch had nothing to warn them, and the generated captions carried
+// the fact while the pinned ones did not.
+const PINNED_PROMPTS: Readonly<Record<string, PinnedPrompt | undefined>> = {
+  "A person bows forward at the waist and stands back up.": { category: "gesture", duration: 40, laterality: "none", pace: 0, posture: STANDING, tags: ["bow"] },
+  "A person claps their hands.": { category: "gesture", laterality: "both", pace: 0, posture: STANDING, tags: ["clap"] },
+  "A person collapses to the ground.": { category: "fall", duration: 40, laterality: "none", pace: 0, posture: { enter: "stand", exit: "supine" }, tags: ["collapse", "fall"] },
+  "A person is kicking with their right leg.": { category: "combat", duration: 40, laterality: "right", pace: 0, posture: STANDING, tags: ["kick"] },
+  "A person is running.": { category: "locomotion", laterality: "none", pace: 3.4, posture: STANDING, tags: ["run"] },
   // The witnessed planted run: the reference sprint is 5.5 m/s, a 4.2 timetable keeps the feet down.
-  "A person is sprinting.": 4.2,
-  "A person is standing still.": 0,
-  "A person is walking.": 1.3,
-  "A person jumps in place.": 0,
-  "A person raises both arms in victory.": 0,
-  "A person reaches forward with their right hand to press a button.": 0,
-  "A person salutes with their right hand.": 0,
-  "A person sits down on the ground.": 0,
-  "A person stumbles forward and regains their balance.": 0.8,
-  "A person turns around and walks away.": 1.0,
-  "A person waves with their right hand.": 0,
+  "A person is sprinting.": { category: "locomotion", laterality: "none", pace: 4.2, posture: STANDING, tags: ["sprint"] },
+  "A person is standing still.": { category: "idle", laterality: "none", pace: 0, posture: STANDING, tags: ["idle"] },
+  "A person is walking.": { category: "locomotion", laterality: "none", pace: 1.3, posture: STANDING, tags: ["walk"] },
+  "A person jumps in place.": { category: "locomotion", duration: 40, laterality: "none", pace: 0, posture: STANDING, tags: ["jump"] },
+  "A person raises both arms in victory.": { category: "gesture", duration: 40, laterality: "both", pace: 0, posture: STANDING, tags: ["victory", "celebrate"] },
+  "A person reaches forward with their right hand to press a button.": { category: "everyday", duration: 40, laterality: "right", pace: 0, posture: STANDING, tags: ["reach", "press"] },
+  "A person salutes with their right hand.": { category: "gesture", duration: 40, laterality: "right", pace: 0, posture: STANDING, tags: ["salute"] },
+  "A person sits down on the ground.": { category: "everyday", duration: 40, laterality: "none", pace: 0, posture: { enter: "stand", exit: "sit" }, tags: ["sit"] },
+  "A person stumbles forward and regains their balance.": { category: "fall", duration: 40, laterality: "none", pace: 0.8, posture: STANDING, tags: ["stumble", "recover"] },
+  "A person turns around and walks away.": { category: "locomotion", laterality: "none", pace: 1.0, posture: STANDING, tags: ["turn", "walk"] },
+  "A person waves with their right hand.": { category: "gesture", laterality: "right", pace: 0, posture: STANDING, tags: ["wave"] },
   // Cutscene beats: each is performed in place.
-  "A person pumps their fist in the air.": 0,
-  "A person flexes both arms.": 0,
-  "A person spins around once.": 0,
-  "A person kneels down on one knee.": 0,
-  "A person throws a punch with their right hand.": 0,
+  "A person pumps their fist in the air.": { category: "gesture", duration: 40, laterality: "right", pace: 0, posture: STANDING, tags: ["celebrate", "fist"] },
+  "A person flexes both arms.": { category: "gesture", duration: 40, laterality: "both", pace: 0, posture: STANDING, tags: ["flex"] },
+  "A person spins around once.": { category: "gesture", duration: 40, laterality: "none", pace: 0, posture: STANDING, tags: ["spin"] },
+  "A person kneels down on one knee.": { category: "everyday", duration: 40, laterality: "none", pace: 0, posture: { enter: "stand", exit: "kneel" }, tags: ["kneel"] },
+  "A person throws a punch with their right hand.": { category: "combat", duration: 40, laterality: "right", pace: 0, posture: STANDING, tags: ["punch"] },
   // A cartwheel covers about a body length and a half.
-  "A person does a cartwheel.": 1.0,
-  "A person crouches and looks around.": 0,
-  "A person picks something up from the ground.": 0,
-  "A person points forward with their right hand.": 0,
-  "A person dances.": 0,
-  "Duck under obstacle and rise.": 0.9,
-  "Step onto raised platform and balance.": 0.4,
+  "A person does a cartwheel.": { category: "sport", duration: 40, laterality: "none", pace: 1.0, posture: STANDING, tags: ["cartwheel"] },
+  "A person crouches and looks around.": { category: "idle", duration: 40, laterality: "none", pace: 0, posture: { enter: "stand", exit: "crouch" }, tags: ["crouch", "look"] },
+  "A person picks something up from the ground.": { category: "everyday", duration: 40, laterality: "both", pace: 0, posture: STANDING, tags: ["pick-up"] },
+  "A person points forward with their right hand.": { category: "gesture", duration: 40, laterality: "right", pace: 0, posture: STANDING, tags: ["point"] },
+  "A person dances.": { category: "dance", laterality: "none", pace: 0, posture: STANDING, tags: ["dance"] },
+  "Duck under obstacle and rise.": { category: "locomotion", duration: 40, laterality: "none", pace: 0.9, posture: STANDING, tags: ["duck"] },
+  "Step onto raised platform and balance.": { category: "locomotion", duration: 40, laterality: "none", pace: 0.4, posture: STANDING, tags: ["step-up", "balance"] },
   // Caption-style forms of the two imperatives above; the training captions describe a person.
-  "A person ducks under an obstacle and stands back up.": 0.9,
-  "A person steps onto a raised platform and balances.": 0.4,
+  "A person ducks under an obstacle and stands back up.": { category: "locomotion", duration: 40, laterality: "none", pace: 0.9, posture: STANDING, tags: ["duck"] },
+  "A person steps onto a raised platform and balances.": { category: "locomotion", duration: 40, laterality: "none", pace: 0.4, posture: STANDING, tags: ["step-up", "balance"] },
 };
 
 const entries = new Map<string, MotionPrompt>(
-  MOTION_PROMPT_LIBRARY.map(({ prompt, sha256 }) => [
-    prompt,
-    { identity: sha256, pace: PINNED_PROMPT_PACES[prompt] ?? DEFAULT_PACE_METRES_PER_SECOND, prompt },
-  ]),
+  MOTION_PROMPT_LIBRARY.map(({ prompt, sha256 }) => {
+    const pinned = PINNED_PROMPTS[prompt];
+    return [
+      prompt,
+      { ...pinned, identity: sha256, pace: pinned?.pace ?? DEFAULT_PACE_METRES_PER_SECOND, prompt },
+    ];
+  }),
 );
 
 /**
