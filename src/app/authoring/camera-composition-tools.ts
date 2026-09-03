@@ -48,7 +48,7 @@ export const cameraCompositionTools = ({
 }): readonly RegisteredWebMcpTool[] => [
   {
     description:
-      "Create or fully replace one camera timeline item. The item owns an exact motion-frame range and the camera view used by both the live stage and temporal capture. Camera-track overlap is rejected by the scene composition.",
+      "Create or fully replace one camera timeline item: a shot. The item owns an exact motion-frame range and the camera view used by both the live stage and temporal capture. Adjacent items are hard cuts. Give `to` (orbit: distance, pitch, yaw; look-at: position) and the shot moves from its view to that view across its own frames with an eased curve: a push-in, a pull-back, or an orbit. Orbit yaw and pitch are radians; distance is metres from the target. Camera-track overlap is rejected by the scene composition.",
     execute: async (raw) => {
       const input = SetCameraTimelineItemInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });

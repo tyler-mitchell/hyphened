@@ -52,14 +52,19 @@ export const useAgentTools = (tools: readonly RegisteredWebMcpTool[]): void => {
       }
     };
 
-    const modelContext = document.modelContext;
-    if (modelContext === undefined) {
-      console.warn("WebMCP is unavailable; ardy registered no agent tools.");
-      return () => controller.abort();
-    }
-    for (const registration of registrations) {
-      void register(modelContext, registration);
-    }
+    // The polyfill wraps the native context when present and installs one otherwise, so in-page
+    // agents can list and execute tools in browsers without native WebMCP.
+    void import("@mcp-b/global").then(() => {
+      if (controller.signal.aborted) return;
+      const modelContext = document.modelContext;
+      if (modelContext === undefined) {
+        console.warn("WebMCP is unavailable; ardy registered no agent tools.");
+        return;
+      }
+      for (const registration of registrations) {
+        void register(modelContext, registration);
+      }
+    });
 
     return () => controller.abort();
   }, [registrations]);

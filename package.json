@@ -21,6 +21,7 @@
     "@coretime/editor": "workspace:*",
     "@hyphened/ui": "workspace:*",
     "@legendapp/state": "catalog:",
+    "@mcp-b/global": "catalog:",
     "@mcp-b/webmcp-types": "catalog:",
     "@surrealdb/wasm": "workspace:*",
     "@tanstack/react-router": "catalog:",

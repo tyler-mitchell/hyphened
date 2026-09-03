@@ -412,12 +412,18 @@ export const $ = type.module({
     action: "'undo' | 'redo'",
     transactionId: ["string >= 1", "=", () => `agent/history/${crypto.randomUUID()}`],
   },
-  SceneLookCameraShot: { label: "string >= 1", mode: "'look-at'", position: "Vector3" },
+  SceneLookCameraShot: {
+    label: "string >= 1",
+    mode: "'look-at'",
+    position: "Vector3",
+    "to?": { position: "Vector3" },
+  },
   SceneOrbitCameraShot: {
     distance: "number > 0",
     label: "string >= 1",
     mode: "'orbit'",
     pitch: "Finite",
+    "to?": { distance: "number > 0", pitch: "Finite", yaw: "Finite" },
     yaw: "Finite",
   },
   SceneCameraShot: "SceneOrbitCameraShot | SceneLookCameraShot",
@@ -533,6 +539,7 @@ export const $ = type.module({
     kind: "'track'",
     overlap: "'forbid'",
   },
+  /** A camera item with `to` moves from its view to that view across its own frames, eased. */
   TimelineLookCameraItem: {
     kind: "'camera'",
     label: "string >= 1",
@@ -540,6 +547,7 @@ export const $ = type.module({
     position: "Vector3",
     projection: "PerspectiveProjection",
     target: "TimelineCameraTarget",
+    "to?": { position: "Vector3" },
   },
   TimelineOrbitCameraItem: {
     distance: "number > 0",
@@ -549,6 +557,7 @@ export const $ = type.module({
     pitch: "Finite",
     projection: "PerspectiveProjection",
     target: "TimelineCameraTarget",
+    "to?": { distance: "number > 0", pitch: "Finite", yaw: "Finite" },
     yaw: "Finite",
   },
   U32: "0 <= number.integer <= 4294967295",
@@ -774,13 +783,15 @@ export const ScenePresentationConfiguration = $.ScenePresentationConfiguration.m
       near: 0.1,
     },
     // Both shots orbit the actors' centroid; at four metres of column spacing plus the route sway,
-    // the distance must hold both bodies in the 45 degree field.
+    // the distance must hold both bodies in the 45 degree field. The opening shot pushes in; the
+    // side shot arcs around the duck.
     shots: [
       {
         distance: 9,
         label: "Opening Camera",
         mode: "orbit",
         pitch: 0.22,
+        to: { distance: 7, pitch: 0.18, yaw: 0.55 },
         yaw: 0.55,
       },
       {
@@ -788,6 +799,7 @@ export const ScenePresentationConfiguration = $.ScenePresentationConfiguration.m
         label: "Side Camera",
         mode: "orbit",
         pitch: 0.12,
+        to: { distance: 10, pitch: 0.12, yaw: 1.5 },
         yaw: 1.1,
       },
     ],

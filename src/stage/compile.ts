@@ -40,15 +40,27 @@ export const compileMotionCameraProgram = (input: {
         projection: data.projection,
         target,
       };
+      // A move eases from the item's view to `to` over the item's frames (smoothstep).
+      const progress = (frame - item.range.start) / Math.max(1, item.range.duration - 1);
+      const ease = progress * progress * (3 - 2 * progress);
+      const mix = (from: number, to: number) => from + (to - from) * ease;
       return data.mode === "orbit"
         ? {
             ...common,
-            distance: data.distance,
+            distance: mix(data.distance, data.to?.distance ?? data.distance),
             mode: data.mode,
-            pitch: data.pitch,
-            yaw: data.yaw,
+            pitch: mix(data.pitch, data.to?.pitch ?? data.pitch),
+            yaw: mix(data.yaw, data.to?.yaw ?? data.yaw),
           }
-        : { ...common, mode: data.mode, position: data.position };
+        : {
+            ...common,
+            mode: data.mode,
+            position: [
+              mix(data.position[0], data.to?.position[0] ?? data.position[0]),
+              mix(data.position[1], data.to?.position[1] ?? data.position[1]),
+              mix(data.position[2], data.to?.position[2] ?? data.position[2]),
+            ],
+          };
     }),
   });
 };
