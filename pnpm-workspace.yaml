@@ -1,9 +1,9 @@
 packages: []
 
 allowBuilds:
-  esbuild: set this to true or false
-  msgpackr-extract: set this to true or false
-  sharp: set this to true or false
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
 
 catalog:
   3d-tiles-renderer: 0.4.27
