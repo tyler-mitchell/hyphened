@@ -73,7 +73,7 @@ There are two ways to reach the tools, and you do not have to configure anything
 1. Wait for the model to load; it streams about 380 MB and shows its progress. The timeline and the read tools work while it loads. The scene opens on The Victor: two actors face each other, a charge, a punch, a collapse, a victory, seven cuts.
 2. Ask the agent: "Read the scene."
 3. Ask: "Cover the collapse with a crane shot on the second actor." The camera track changes and the stage cuts to it.
-4. Ask: "Show me a contact sheet of the second actor around the collapse."
+4. Ask: "Show me a contact sheet of the second actor around the collapse." The sheet is captured from the live renderer at those exact frames. It renders as an image in a WebMCP client; the panel shows the result as text.
 5. Ask: "Write a new scene: one actor walks in, bows, dances, and salutes, with a close-up on the bow." The agent calls `author_scene` and the scene opens on it.
 6. Ask: "Undo that."
 
