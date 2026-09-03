@@ -44,9 +44,18 @@ export const App = () => {
   // is supplied to the canvas so history survives a reload.
   const [project, setProject] = useState<SceneProject>();
   useEffect(() => {
-    sceneProject().then(setProject, (cause: unknown) =>
-      setReadiness({ reason: String(cause), status: "failed" }),
+    const mount = { live: true };
+    sceneProject().then(
+      (opened) => {
+        if (mount.live) setProject(opened);
+      },
+      (cause: unknown) => {
+        if (mount.live) setReadiness({ reason: String(cause), status: "failed" });
+      },
     );
+    return () => {
+      mount.live = false;
+    };
   }, []);
   const opened = useCallback(() => setReadiness({ status: "open" }), []);
   const openSession: WebGpuCanvasSessionFactory<typeof motionTimelineDeclaration> = ({
@@ -59,7 +68,6 @@ export const App = () => {
       {project === undefined ? null : (
         <WebGpuCanvas
           className={styles.canvas()}
-          declaration={motionTimelineDeclaration}
           onError={(cause) => setReadiness({ reason: String(cause), status: "failed" })}
           openSession={openSession}
           timeline={project.timeline}
