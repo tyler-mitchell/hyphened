@@ -12,22 +12,28 @@ This project existed before August 25, 2026. Everything WebMCP was added during 
 
 | Date | Commit | Change |
 | --- | --- | --- |
-| 2026-08-29 | `bc5174537` | WebMCP registration owner and the first tool set |
-| 2026-08-31 | `e4292b5c6` | The scene authored as composition data |
-| 2026-08-31 | `47e777bbd` | Travel pace per prompt span; editor edits admitted through the same boundary |
-| 2026-09-01 | `1870c4334` | Composition checkpoints and the temporal contact sheet capture |
-| 2026-09-01 | `bc494ba14` | Camera timeline composition and its tools |
-| 2026-09-03 | `56418d9bc` | The seed story with authored coverage; `newScene` |
-| 2026-09-03 | `0de02d17e` | The durable scene: a record carries the story it was seeded from |
-| 2026-09-03 | `6a527e4f3` | The Victor: two actors, seven preset cuts, authored origins, cause-chain failures |
-| 2026-09-03 | `faa08f72a` | Stories as data: `AuthoredStory`, three built-ins, `author_scene` |
-| 2026-09-03 | `5143b799f` | The manifest-backed motion library; rows load on first use |
-| 2026-09-03 | `c6528e3d4` | `add_actor` and `remove_actor`: actors join and leave the running scene |
-| 2026-09-03 | `9e1a94231` | `read_scene_summary` carries each actor's origin |
-| 2026-09-03 | `113808150` | Library entries carry category, laterality, and posture |
-| 2026-09-03 | `8ca5d97f0` | `list_motion_prompts` faceted by category, tag, posture, and pace |
-| 2026-09-03 | `ff9bc0330` | The motion library reaches 75 captions |
-| 2026-09-03 | `db883c41a` | The model route redirects to object storage for deployment |
+| 2026-08-29 | `ba654d1` | WebMCP registration owner and the first tool set |
+| 2026-08-31 | `2967f50` | The scene authored as composition data |
+| 2026-08-31 | `c6198de` | Travel pace per prompt span; editor edits admitted through the same boundary |
+| 2026-09-01 | `432999a` | Composition checkpoints and the temporal contact sheet capture |
+| 2026-09-01 | `e932efb` | Camera timeline composition and its tools |
+| 2026-09-02 | `c290ef4` | `set_motion_span`: one actor's prompt over a frame range on the generation grid |
+| 2026-09-02 | `f730549` | One prompt library owns validity, identity, and pace; `list_motion_prompts` |
+| 2026-09-02 | `f956900` | The durable scene: a project catalog in SurrealDB WASM, a journal for the run |
+| 2026-09-02 | `21628f3` | `encode_motion_prompt` against the exact text encoder, rows persisted with the scene |
+| 2026-09-02 | `73c12d5` | `read_scene_history` from the journal's transactions, and the live authorship trail |
+| 2026-09-02 | `eabb488` | The agent authoring loop: replan on a span edit, actor paths, live bodies, scene summary |
+| 2026-09-02 | `1064d8e` | Camera moves, and the WebMCP polyfill so in-page agents can list and execute tools |
+| 2026-09-03 | `26214c9` | Tool schemas register; the scene opens from the catalog document |
+| 2026-09-03 | `5edc604` | The in-page agent panel, for a judge whose browser has no WebMCP client |
+| 2026-09-03 | `4517cad` | A tool result is bounded before it enters the agent's history |
+| 2026-09-03 | `b64a1b7` | The address drives the scene; the story picker navigates |
+| 2026-09-03 | `7aca538` | The agent panel reaches the browsers that cannot run the scene |
+
+This application is developed in a private monorepo alongside its engine, so some later
+application changes arrive here inside a `refresh:` or `sync:` commit rather than as their own.
+Those commits carry the same dates and the same code; `git log --since=2026-08-25` lists every
+one of them.
 
 The timeline substrate and the engine existed before the period. They are licensed dependencies of this application, vendored under `vendor/`, and are not part of the open-source code here.
 
@@ -62,11 +68,11 @@ Agent commits carry an author in their transaction identity, `agent/<tool>/<uuid
 
 ## Try it
 
-Open the live URL in any desktop browser with WebGPU and `shader-f16`, which desktop Chrome has. The page tells you if something is missing.
+Open the live URL in any desktop browser with WebGPU and `shader-f16`, which desktop Chrome has. The page tells you if something is missing, and the agent panel opens either way, so you can ask it what your browser lacks.
 
 There are two ways to reach the tools, and you do not have to configure anything for the first.
 
-**The agent panel, no setup.** The panel at the bottom right runs a model against the page's own registered tools and shows every call with its input and result. Bring your own Anthropic or OpenAI key; it stays in your browser, is used for that one request, and is never stored by this site.
+**The agent panel, no setup.** Press the robot button at the top right. The panel runs a model against the page's own registered tools and shows every call with its input and result. Bring your own Anthropic or OpenAI key; it stays in your browser, is used for that one request, and is never stored by this site.
 
 **Your own WebMCP client.** Chrome 149 or later with `chrome://flags/#enable-webmcp-testing` enabled, or ChatGPT's in-app browser with Site tools on. The page's tools then appear to your own agent, and Chrome DevTools, Application panel, WebMCP pane lists them and records every call.
 
