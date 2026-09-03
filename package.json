@@ -2,13 +2,14 @@
   "name": "ardy",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
-    "dev": "vp dev",
+    "dev": "ARDY_MODEL_ROOT=${ARDY_MODEL_ROOT:-.data/models} vp dev",
     "build": "vp build",
     "check": "vp check",
-    "preview": "vp preview",
+    "preview": "ARDY_MODEL_ROOT=${ARDY_MODEL_ROOT:-.data/models} vp preview",
     "prepare:assets": "tsx scripts/prepare-core-assets.ts",
-    "start": "node .output/server/index.mjs"
+    "start": "ARDY_MODEL_ROOT=${ARDY_MODEL_ROOT:-.data/models} node .output/server/index.mjs"
   },
   "dependencies": {
     "@base-ui/react": "catalog:",

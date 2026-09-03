@@ -10,3 +10,4 @@ models
 dist
 dist-ssr
 *.local
+.netlify/

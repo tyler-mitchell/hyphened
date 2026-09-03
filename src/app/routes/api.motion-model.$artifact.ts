@@ -63,10 +63,30 @@ const admitArtifactFile = async (input: {
     )
     .catch(() => ({ kind: "unavailable" as const }));
 
+/**
+ * The object key of one artifact. The deployed application keeps the model in object storage,
+ * because the six shards are 380 MB and no application host carries that. Resolving against the
+ * filesystem root yields the same relative layout the bucket holds, so the installed catalog and
+ * the bucket stay one layout instead of two.
+ */
+const modelObjectKey = (artifact: string): string | undefined =>
+  resolveInstalledRuntimeArtifact({ artifact, modelRoot: "/" })?.path.slice(1);
+
 export const Route = createFileRoute("/api/motion-model/$artifact")({
   server: {
     handlers: {
       GET: async ({ params, request }) => {
+        // `ARDY_MODEL_BASE_URL` names the prefix holding `runtime/webgpu-f16/`. The browser follows
+        // the redirect and reads the shard from the bucket, so the model never crosses this host.
+        const modelBaseUrl = process.env.ARDY_MODEL_BASE_URL?.trim();
+        if (modelBaseUrl !== undefined && modelBaseUrl.length > 0) {
+          const key = modelObjectKey(params.artifact);
+          if (key === undefined) {
+            return new Response("Unknown motion model profile or artifact", { status: 404 });
+          }
+          return Response.redirect(new URL(key, `${modelBaseUrl.replace(/\/+$/u, "")}/`), 302);
+        }
+
         const artifact = resolveInstalledRuntimeArtifact({
           artifact: params.artifact,
           modelRoot: resolveInstalledModelRoot({

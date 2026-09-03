@@ -1,0 +1,16 @@
+[build]
+  command = "pnpm build"
+  publish = "dist"
+
+[build.environment]
+  NITRO_PRESET = "netlify"
+
+# The application shell and the motion caption library are served from this origin. The motion
+# model is not: its six shards are 63 to 66 MB each, and files that size do not belong on a CDN
+# meant for site assets. `ARDY_MODEL_BASE_URL` sends the loader to object storage instead, so the
+# bucket address is configuration and changing it needs no rebuild.
+#
+# Set in the Netlify UI, under environment variables:
+#   ARDY_MODEL_BASE_URL   the public prefix that contains runtime/webgpu-f16/
+#   ARDY_TEXT_ENCODER_URL the exact text encoder, for encode_motion_prompt
+#   ARDY_TEXT_ENCODER_AUTH  user:password, only when the encoder asks for a login
