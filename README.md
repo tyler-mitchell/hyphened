@@ -12,23 +12,23 @@ This project existed before August 25, 2026. Everything WebMCP was added during 
 
 | Date | Commit | Change |
 | --- | --- | --- |
-| 2026-08-29 | `ba654d1` | WebMCP registration owner and the first tool set |
-| 2026-08-31 | `2967f50` | The scene authored as composition data |
-| 2026-08-31 | `c6198de` | Travel pace per prompt span; editor edits admitted through the same boundary |
-| 2026-09-01 | `432999a` | Composition checkpoints and the temporal contact sheet capture |
-| 2026-09-01 | `e932efb` | Camera timeline composition and its tools |
-| 2026-09-02 | `c290ef4` | `set_motion_span`: one actor's prompt over a frame range on the generation grid |
-| 2026-09-02 | `f730549` | One prompt library owns validity, identity, and pace; `list_motion_prompts` |
-| 2026-09-02 | `f956900` | The durable scene: a project catalog in SurrealDB WASM, a journal for the run |
-| 2026-09-02 | `21628f3` | `encode_motion_prompt` against the exact text encoder, rows persisted with the scene |
-| 2026-09-02 | `73c12d5` | `read_scene_history` from the journal's transactions, and the live authorship trail |
-| 2026-09-02 | `eabb488` | The agent authoring loop: replan on a span edit, actor paths, live bodies, scene summary |
-| 2026-09-02 | `1064d8e` | Camera moves, and the WebMCP polyfill so in-page agents can list and execute tools |
-| 2026-09-03 | `26214c9` | Tool schemas register; the scene opens from the catalog document |
-| 2026-09-03 | `5edc604` | The in-page agent panel, for a judge whose browser has no WebMCP client |
-| 2026-09-03 | `4517cad` | A tool result is bounded before it enters the agent's history |
-| 2026-09-03 | `b64a1b7` | The address drives the scene; the story picker navigates |
-| 2026-09-03 | `7aca538` | The agent panel reaches the browsers that cannot run the scene |
+| 2026-08-29 | `209057e` | WebMCP registration owner and the first tool set |
+| 2026-08-31 | `108418e` | The scene authored as composition data |
+| 2026-08-31 | `452750a` | Travel pace per prompt span; editor edits admitted through the same boundary |
+| 2026-09-01 | `2b3761d` | Composition checkpoints and the temporal contact sheet capture |
+| 2026-09-01 | `47bf7a3` | Camera timeline composition and its tools |
+| 2026-09-02 | `e6f99d4` | `set_motion_span`: one actor's prompt over a frame range on the generation grid |
+| 2026-09-02 | `290d2a2` | One prompt library owns validity, identity, and pace; `list_motion_prompts` |
+| 2026-09-02 | `3401f41` | The durable scene: a project catalog in SurrealDB WASM, a journal for the run |
+| 2026-09-02 | `9a13a7f` | `encode_motion_prompt` against the exact text encoder, rows persisted with the scene |
+| 2026-09-02 | `e5a9bbe` | `read_scene_history` from the journal's transactions, and the live authorship trail |
+| 2026-09-02 | `0d1d882` | The agent authoring loop: replan on a span edit, actor paths, live bodies, scene summary |
+| 2026-09-02 | `f9a892c` | Camera moves, and the WebMCP polyfill so in-page agents can list and execute tools |
+| 2026-09-03 | `9bd974e` | Tool schemas register; the scene opens from the catalog document |
+| 2026-09-03 | `c1611a2` | The in-page agent panel, for a judge whose browser has no WebMCP client |
+| 2026-09-03 | `7ad95f0` | A tool result is bounded before it enters the agent's history |
+| 2026-09-03 | `35f83f4` | The address drives the scene; the story picker navigates |
+| 2026-09-03 | `7d806dd` | The agent panel reaches the browsers that cannot run the scene |
 
 This application is developed in a private monorepo alongside its engine, so some later
 application changes arrive here inside a `refresh:` or `sync:` commit rather than as their own.
