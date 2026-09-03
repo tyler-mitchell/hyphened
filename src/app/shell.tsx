@@ -1,4 +1,5 @@
 import { tv } from "@hyphened/ui/tv";
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import type { MotionParameterProgress } from "webgpu-engine/motion";
 import { WebGpuCanvas, useEngine, type WebGpuCanvasSessionFactory } from "webgpu-engine/react";
@@ -14,6 +15,8 @@ import {
   type SceneReadiness,
 } from "./authoring/scene-readiness";
 import { SceneTimeline, type StartScene } from "./timeline/scene-timeline";
+import { Route } from "./routes/index";
+import { AUTHORED_STORIES } from "../scene/default";
 import { openMotionProduction } from "../stage/open";
 import {
   observeSceneProject,
@@ -94,6 +97,10 @@ export const App = () => {
   // The checkpoint is 380 MB and streams inside the canvas session, after the canvas has mounted.
   // The shell outlives that session, so the shell holds the count and shows it over the stage.
   const [progress, setProgress] = useState<MotionParameterProgress>();
+  // The address is read once, at open. It is the visitor's intent for this visit; after that the
+  // scene leads and the address follows it.
+  const { story: requested } = Route.useSearch();
+  const navigate = useNavigate();
   useEffect(() => {
     const mount = { live: true };
     void readDevice().then((probed) => {
@@ -105,19 +112,36 @@ export const App = () => {
     });
     sceneProject().then(
       (opened) => {
-        if (mount.live) setProject(opened);
+        if (!mount.live) return;
+        setProject(opened);
+        // An address that names a different story than the saved scene wins, because the visitor
+        // followed a link to that story. A scene already on it, or an address naming none, opens
+        // the saved scene untouched.
+        const addressed = requested === undefined ? undefined : AUTHORED_STORIES[requested];
+        if (addressed !== undefined && requested !== opened.record.definition.seed) {
+          void startNewScene({ seed: requested, story: addressed }).catch((cause: unknown) => {
+            if (mount.live) setReadiness({ reason: describeFailure(cause), status: "failed" });
+          });
+        }
       },
       (cause: unknown) => {
         if (mount.live) setReadiness({ reason: describeFailure(cause), status: "failed" });
       },
     );
     // A new scene replaces the project in place: the canvas below is keyed on it, so the running
-    // session closes and a new one opens on the new run.
+    // session closes and a new one opens on the new run. The address follows the scene, so the
+    // link in the bar always names what is playing and can be sent to someone else.
     const unobserve = observeSceneProject((next) => {
       if (!mount.live) return;
       setReadiness({ status: "opening" });
       setProgress(undefined);
       setProject(next);
+      void navigate({
+        replace: true,
+        search: () =>
+          next.record.definition.seed === undefined ? {} : { story: next.record.definition.seed },
+        to: "/",
+      });
     });
     return () => {
       mount.live = false;
