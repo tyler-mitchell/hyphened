@@ -9,30 +9,30 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as PlaygroundRouteImport } from './routes/playground'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiMotionGifRouteImport } from './routes/api.motion-gif'
+import { Route as PlaygroundRouteImport } from './routes/playground'
 import { Route as ApiAgentRouteImport } from './routes/api.agent'
+import { Route as ApiMotionGifRouteImport } from './routes/api.motion-gif'
 import { Route as ApiMotionModelArtifactRouteImport } from './routes/api.motion-model.$artifact'
 
-const PlaygroundRoute = PlaygroundRouteImport.update({
-  id: '/playground',
-  path: '/playground',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiMotionGifRoute = ApiMotionGifRouteImport.update({
-  id: '/api/motion-gif',
-  path: '/api/motion-gif',
+const PlaygroundRoute = PlaygroundRouteImport.update({
+  id: '/playground',
+  path: '/playground',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAgentRoute = ApiAgentRouteImport.update({
   id: '/api/agent',
   path: '/api/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMotionGifRoute = ApiMotionGifRouteImport.update({
+  id: '/api/motion-gif',
+  path: '/api/motion-gif',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMotionModelArtifactRoute = ApiMotionModelArtifactRouteImport.update({
@@ -97,13 +97,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/playground': {
-      id: '/playground'
-      path: '/playground'
-      fullPath: '/playground'
-      preLoaderRoute: typeof PlaygroundRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -111,11 +104,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/motion-gif': {
-      id: '/api/motion-gif'
-      path: '/api/motion-gif'
-      fullPath: '/api/motion-gif'
-      preLoaderRoute: typeof ApiMotionGifRouteImport
+    '/playground': {
+      id: '/playground'
+      path: '/playground'
+      fullPath: '/playground'
+      preLoaderRoute: typeof PlaygroundRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/agent': {
@@ -123,6 +116,13 @@ declare module '@tanstack/react-router' {
       path: '/api/agent'
       fullPath: '/api/agent'
       preLoaderRoute: typeof ApiAgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/motion-gif': {
+      id: '/api/motion-gif'
+      path: '/api/motion-gif'
+      fullPath: '/api/motion-gif'
+      preLoaderRoute: typeof ApiMotionGifRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/motion-model/$artifact': {
