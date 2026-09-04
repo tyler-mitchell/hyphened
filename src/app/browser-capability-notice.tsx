@@ -74,6 +74,11 @@ const capabilityChecks = (capabilities: BrowserCapabilities) =>
       name: "shader-f16",
       note: "Runs the motion model at half precision. Update Chrome and your graphics driver, then reload.",
     },
+    {
+      available: capabilities.languageFeature,
+      name: "immediate_address_space",
+      note: "Builds the physics shaders. Chrome 149 and later carry it; an older Chrome or an embedded browser does not.",
+    },
   ] as const;
 
 const CapabilityRow = ({

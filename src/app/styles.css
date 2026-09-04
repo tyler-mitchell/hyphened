@@ -1,7 +1,3 @@
-/* The typefaces resolve here so the build emits them. The packaged stylesheet names them by the
-   path they had when it was packed, which no server serves. */
-@import "@fontsource-variable/dm-sans";
-@import "@fontsource-variable/jetbrains-mono";
 @import "@hyphened/ui/styles.css";
 /* Brings the timeline editor's utility classes and its default palette. The package owns its own
    source scanning, so this stays a package specifier rather than a path into the workspace. */
