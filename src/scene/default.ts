@@ -203,7 +203,8 @@ export const AUTHORED_STORIES: Readonly<Record<string, AuthoredStory>> = {
   },
 };
 
-export const DEFAULT_STORY = "empty";
+/** A first visit opens on a scene that plays; the empty story is what `create_scene` starts from. */
+export const DEFAULT_STORY = "the-victor";
 
 /** The built-in stories an agent or the page can start: id and title. */
 export const storyChoices = (): ReadonlyArray<{ readonly id: string; readonly title: string }> =>
