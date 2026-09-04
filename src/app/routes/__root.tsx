@@ -20,7 +20,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { content: "width=device-width, initial-scale=1", name: "viewport" },
-      { title: "Ardy · a scene an agent can direct" },
+      { title: "Hyphened · a scene an agent can direct" },
       {
         content:
           "Learned human motion on WebGPU, authored through WebMCP: an agent reads the scene, writes the story, cuts the camera, and captures the result.",

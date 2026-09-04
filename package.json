@@ -18,6 +18,8 @@
     "@coretime/core": "file:./vendor/coretime-core-0.0.0-gate-b2.tgz",
     "@coretime/editor": "file:./vendor/coretime-editor-0.0.0-gate-b2.tgz",
     "@coretime/project": "file:./vendor/coretime-project-0.0.0-gate-c.tgz",
+    "@fontsource-variable/dm-sans": "catalog:",
+    "@fontsource-variable/jetbrains-mono": "catalog:",
     "@hyphened/ui": "file:./vendor/hyphened-ui-0.0.0-gate-b2.tgz",
     "@legendapp/state": "catalog:",
     "@mcp-b/global": "catalog:",
