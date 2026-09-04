@@ -17,9 +17,7 @@ export const transportTools = ({
   {
     description: `Control the transport. play starts the scene. pause stops it at the current frame. restart goes to frame 0 and plays. seek needs \`frame\`. step takes signed \`ticks\` and uses 1 if you give none. setRate needs a positive \`rate\`. The scene pauses at its last frame. A seek after the last frame is refused. The browser keeps the scene between reloads. newScene opens a new scene on a built-in story (\`story\`: ${storyChoices()
       .map(({ id, title }) => `${id} = ${title}`)
-      .join(
-        ", ",
-      )}; the first if you give none). The old scene stays in the catalog. The tools go away while the new scene opens, then read_scene_readiness reports open again. To open a scene on your own story, use author_scene.`,
+      .join(", ")}; ${DEFAULT_STORY} if you give none). The old scene stays in the catalog. The tools go away while the new scene opens, then read_scene_readiness reports open again. To open a scene on your own story, use author_scene.`,
     execute: async (raw) => {
       const input = ControlMotionInput.assert(raw);
       if (input.action === "newScene") {
