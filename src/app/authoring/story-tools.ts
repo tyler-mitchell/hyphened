@@ -47,6 +47,10 @@ const storyRefusal = (story: AuthoredStory): string | undefined => {
     .find((refusal) => refusal !== undefined);
   if (spanRefusal !== undefined) return spanRefusal;
   const shots = story.coverage.toSorted((left, right) => left.start - right.start);
+  const last = shots.at(-1);
+  if (last === undefined) {
+    return `coverage is empty; give at least one shot (${CAMERA_SHOT_PRESETS.join(", ")}) covering frames 0 to ${String(story.frameCount)}`;
+  }
   const gap = shots.find(
     (shot, index) =>
       shot.end <= shot.start ||
@@ -56,9 +60,9 @@ const storyRefusal = (story: AuthoredStory): string | undefined => {
   if (gap !== undefined) {
     return `coverage must be contiguous from frame 0 with each row below ${String(story.actors.length)}; the ${gap.preset} shot at ${String(gap.start)}-${String(gap.end)} on row ${String(gap.row)} breaks it`;
   }
-  return shots.at(-1)!.end === story.frameCount
+  return last.end === story.frameCount
     ? undefined
-    : `coverage ends at ${String(shots.at(-1)!.end)}, not at the story's ${String(story.frameCount)} frames`;
+    : `coverage ends at ${String(last.end)}, not at the story's ${String(story.frameCount)} frames`;
 };
 
 export const storyTools = (): readonly RegisteredWebMcpTool[] => [
