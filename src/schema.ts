@@ -17,6 +17,7 @@ export const PHYSICS_SUBSTEPS_PER_FRAME = 4;
 export const INITIAL_SUBJECT_COUNT = 2;
 export const DEFAULT_TEMPORAL_SHEET_COLUMNS = 4;
 export const DEFAULT_TEMPORAL_SHEET_CELL_WIDTH = 480;
+export const MAX_SCENE_PREVIEW_REQUEST_BYTES = 4_000_000;
 
 /** The application's authoring vocabulary, composed over the motion model's own scope. */
 export const $ = type.module({
@@ -44,18 +45,44 @@ export const $ = type.module({
    * stands in the world, the planar path it follows in its own frame, and its beats in order; the
    * coverage is the cuts, contiguous from frame 0 to the end.
    */
+  /**
+   * A wall of loose bricks in a running bond, laid along the world X axis at an offset from the
+   * route point an actor reaches at `tick`. Alternate courses are closed with half bricks so that
+   * no vertical joint runs the wall's height and no end brick stands half-unsupported.
+   */
+  AuthoredWall: {
+    bricksPerCourse: "number.integer > 0",
+    courses: "number.integer > 0",
+    offset: "ReadonlyVector3",
+    row: "U32",
+    tick: "U32",
+  },
   AuthoredStory: {
-    actors: "AuthoredStoryActor[] >= 1",
-    coverage: "AuthoredShot[] >= 1",
+    actors: "AuthoredStoryActor[]",
+    coverage: "AuthoredShot[]",
     frameCount: "number.integer > 0",
     title: "string >= 1",
+    "walls?": "AuthoredWall[]",
   },
+  PopulatedStory: [
+    "AuthoredStory",
+    "&",
+    { actors: "AuthoredStoryActor[] >= 1", coverage: "AuthoredShot[] >= 1" },
+  ],
   AuthoredStoryActor: {
     origin: "Vector3",
     path: "PlanarPoint[] >= 1",
     scenario: "AuthoredBeat[] >= 1",
   },
-  AuthorSceneInput: { story: "AuthoredStory" },
+  AuthorSceneInput: {
+    "environment?": "EnvironmentEntity[]",
+    "render?": "MotionRenderConfiguration",
+    story: "PopulatedStory",
+  },
+  CreateSceneInput: {
+    frameCount: "number.integer > 0 = 320",
+    title: "NonEmptyString = 'Untitled Scene'",
+  },
   /** A new actor while the scene runs: where it stands, its path, and its beats; beats default to standing still. */
   AddActorInput: {
     origin: "Vector3",
@@ -99,14 +126,6 @@ export const $ = type.module({
     id: "string >= 1",
     startFrame: "number.integer >= 0",
   },
-  ControlMotionInput: {
-    action: "'newScene' | 'pause' | 'play' | 'restart' | 'seek' | 'setRate' | 'step'",
-    "frame?": "number.integer >= 0",
-    "rate?": "number > 0",
-    /** For newScene: the built-in story to open; the default story when omitted. */
-    "story?": "string >= 1",
-    "ticks?": "number.integer",
-  },
   EditSceneCompositionInput: {
     changes: "SceneCompositionChange[] >= 1",
     summary: "1 <= string <= 160",
@@ -116,6 +135,17 @@ export const $ = type.module({
       () => `agent/edit_scene_composition/${crypto.randomUUID()}`,
     ],
   },
+  EnvironmentEntity: {
+    asset: "NonEmptyString",
+    color: ["Vector4", "=", (): [number, number, number, number] => [0.62, 0.64, 0.68, 1]],
+    id: "NonEmptyString",
+    position: ["Vector3", "=", (): [number, number, number] => [0, 0, 0]],
+    rotation: ["Vector3", "=", (): [number, number, number] => [0, 0, 0]],
+    scale: ["Vector3", "=", (): [number, number, number] => [1, 1, 1]],
+  },
+  SetEnvironmentInput: { entities: "EnvironmentEntity[]" },
+  SetEnvironmentEntityInput: "EnvironmentEntity",
+  RemoveEnvironmentEntityInput: { id: "NonEmptyString" },
   GroundAppearance: {
     color: "Vector4",
     halfExtent: "number > 0",
@@ -133,17 +163,17 @@ export const $ = type.module({
     worldOffset: "ReadonlyVector3",
   },
   MotionSceneComposition: {
-    actors: "MotionSceneActor[] >= 1",
+    actors: "MotionSceneActor[]",
     cameraTrack: "TimelineCameraTrack",
     frameCount: "number.integer > 0",
     bodies: "SceneBody[]",
   },
   /**
    * A body as lowered from the composition: a box of a given mass standing on an actor's route
-   * at a frame, its centre `elevation` above the ground. Zero mass is a fixed body.
+   * at a frame, its centre at `offset` from that point. Zero mass is a fixed body.
    */
   SceneBody: {
-    elevation: "number >= 0",
+    offset: "ReadonlyVector3",
     halfExtents: "ReadonlyVector3",
     id: "NonEmptyString",
     mass: "number >= 0",
@@ -151,7 +181,7 @@ export const $ = type.module({
     tick: "U32",
   },
   BodyItemData: {
-    elevation: "number >= 0",
+    offset: "ReadonlyVector3",
     halfExtents: "ReadonlyVector3",
     label: "string >= 1",
     mass: "number >= 0",
@@ -221,7 +251,14 @@ export const $ = type.module({
     "subject?": "string >= 1",
     window: "TemporalSheetWindow",
   },
+  MotionPreviewInput: {
+    samples: "2 <= number.integer <= 60 = 30",
+    startFrame: "number.integer >= 0 = 0",
+    stride: "1 <= number.integer <= 60 = 4",
+  },
+  OpenSceneInput: { scene: "NonEmptyString" },
   MotionViewRow: {
+    eye: "tgpu.vec4f",
     groundOrigin: "tgpu.vec4f",
     lightDirection: "tgpu.vec4f",
     viewProjection: "tgpu.mat4x4f",
@@ -239,7 +276,7 @@ export const $ = type.module({
     },
   },
   ReadSceneCompositionInput: { "composition?": "string >= 1" },
-  ReadSceneSummaryInput: {},
+  ReadSceneSummaryInput: { includeStories: "boolean = false" },
   RemoveCameraTimelineItemInput: { id: "string >= 1" },
   RenderCameraEntityTarget: {
     entities: "U32[] >= 1",
@@ -325,6 +362,7 @@ export const $ = type.module({
     limit: "1 <= number.integer <= 200 = 100",
     "maxPace?": "number >= 0",
     "minPace?": "number >= 0",
+    "query?": "NonEmptyString",
     "tag?": "NonEmptyString",
   },
   EncodeMotionPromptInput: { "pace?": "number >= 0", prompt: "NonEmptyString" },
@@ -332,7 +370,7 @@ export const $ = type.module({
   RemoveBodyInput: { id: "NonEmptyString" },
   SetActorPathInput: { actor: "NonEmptyString", path: "PlanarPoint[] >= 1" },
   SetBodyInput: {
-    "elevation?": "number >= 0",
+    "offset?": "ReadonlyVector3",
     halfExtents: "ReadonlyVector3",
     "id?": "NonEmptyString",
     label: "string >= 1",
@@ -353,8 +391,11 @@ export const $ = type.module({
   SkinnedVertex: {
     joints0: "Joints",
     joints1: ["Joints", "=", (): [number, number, number, number] => [0, 0, 0, 0]],
+    /** The base-colour array layer this vertex samples. */
+    material: ["U32", "=", 0],
     normal: "Vector3",
     position: "Vector3",
+    uv: ["PlanarPoint", "=", (): [number, number] => [0, 0]],
     weights0: "Weights",
     weights1: ["Weights", "=", (): [number, number, number, number] => [0, 0, 0, 0]],
   },
@@ -440,6 +481,28 @@ export const $ = type.module({
     yaw: "Finite",
   },
 });
+
+export const ControlMotionInput = type({
+  action: type("'newScene'").describe("Open a new scene from a built-in story."),
+  "story?": type("string >= 1").describe(
+    "The built-in story id. Omission selects the default story.",
+  ),
+})
+  .or({ action: type("'pause'").describe("Pause playback at the current frame.") })
+  .or({ action: type("'play'").describe("Play forward from the current frame.") })
+  .or({ action: type("'restart'").describe("Return to frame zero and play.") })
+  .or({
+    action: type("'seek'").describe("Move the transport to one motion frame."),
+    frame: type("number.integer >= 0").describe("The destination motion frame."),
+  })
+  .or({
+    action: type("'setRate'").describe("Set the playback rate."),
+    rate: type("number > 0").describe("The positive playback-rate multiplier."),
+  })
+  .or({
+    action: type("'step'").describe("Move by a signed number of motion-frame ticks."),
+    "ticks?": type("number.integer").describe("The signed tick count. Omission selects one tick."),
+  });
 
 export const MotionView = typegpuStruct($.MotionViewRow);
 
@@ -538,7 +601,6 @@ export const ListMotionPromptsInput = $.ListMotionPromptsInput;
 export const ReadSceneHistoryInput = $.ReadSceneHistoryInput;
 export const EncodeMotionPromptInput = $.EncodeMotionPromptInput;
 export const RemoveCameraTimelineItemInput = $.RemoveCameraTimelineItemInput;
-export const ControlMotionInput = $.ControlMotionInput;
 export const EditSceneCompositionInput = $.EditSceneCompositionInput;
 export const ReadSceneCompositionInput = $.ReadSceneCompositionInput;
 export const ReadSceneSummaryInput = $.ReadSceneSummaryInput;
@@ -550,6 +612,7 @@ export const SetMotionSpanInput = $.SetMotionSpanInput;
 export const SetActorPathInput = $.SetActorPathInput;
 export const SetBodyInput = $.SetBodyInput;
 export const RemoveBodyInput = $.RemoveBodyInput;
+export const OpenSceneInput = $.OpenSceneInput;
 
 /**
  * Schedules the physics capability consumes for bodies placed, changed, or removed after the
@@ -562,8 +625,16 @@ export const PHYSICS_STATIC_UPDATE_SCHEDULE = "physics/static-update";
 /** Free pool rows and free static collider rows kept for bodies placed after the scene opens. */
 export const BODY_POOL_SPARE = 8;
 export const MotionTemporalSheetInput = $.MotionTemporalSheetInput;
+export const MotionPreviewInput = $.MotionPreviewInput;
 export const AuthoredStory = $.AuthoredStory;
 export type AuthoredStory = typeof AuthoredStory.infer;
+export type AuthoredWall = typeof $.AuthoredWall.infer;
 export const AuthorSceneInput = $.AuthorSceneInput;
+export const CreateSceneInput = $.CreateSceneInput;
+export const EnvironmentEntity = $.EnvironmentEntity;
+export type EnvironmentEntity = typeof EnvironmentEntity.infer;
+export const SetEnvironmentInput = $.SetEnvironmentInput;
+export const SetEnvironmentEntityInput = $.SetEnvironmentEntityInput;
+export const RemoveEnvironmentEntityInput = $.RemoveEnvironmentEntityInput;
 export const AddActorInput = $.AddActorInput;
 export const RemoveActorInput = $.RemoveActorInput;

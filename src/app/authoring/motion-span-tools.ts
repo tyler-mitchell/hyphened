@@ -46,6 +46,7 @@ const promptFilters = ({
   exit,
   maxPace,
   minPace,
+  query,
   tag,
 }: typeof ListMotionPromptsInput.infer): ReadonlyArray<(entry: MotionPrompt) => boolean> => [
   ...(category === undefined ? [] : [(entry: MotionPrompt) => entry.category === category]),
@@ -54,6 +55,27 @@ const promptFilters = ({
   ...(exit === undefined ? [] : [(entry: MotionPrompt) => entry.posture?.exit === exit]),
   ...(minPace === undefined ? [] : [(entry: MotionPrompt) => entry.pace >= minPace]),
   ...(maxPace === undefined ? [] : [(entry: MotionPrompt) => entry.pace <= maxPace]),
+  ...(query === undefined
+    ? []
+    : [
+        (entry: MotionPrompt) => {
+          const text = [
+            entry.prompt,
+            entry.category,
+            entry.laterality,
+            entry.posture?.enter,
+            entry.posture?.exit,
+            ...(entry.tags ?? []),
+          ]
+            .filter((value) => value !== undefined)
+            .join(" ")
+            .toLowerCase();
+          return query
+            .toLowerCase()
+            .split(/\s+/u)
+            .every((term) => text.includes(term));
+        },
+      ]),
 ];
 
 /** How many entries carry each value of one facet; an entry without it counts as unclassified. */
@@ -100,7 +122,7 @@ export const motionSpanTools = ({
   {
     annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "Browse the prompts an actor can be conditioned on. Called with no input, it returns counts and no entries: `total`, `byCategory`, `byPostureEnter`, and `byPostureExit`, each counting entries without the facet under `unclassified` and summing to `total`; call it first to see the library's shape and choose a filter. With any filter (`category`, `tag`, `enter`, `exit`, `minPace`, `maxPace`; combined with AND; pace bounds inclusive, so minPace 0 and maxPace 0 gives the captions performed in place) or `all: true`, it returns `matched` (how many entries the filter selects), `returned` (how many are in this reply, at most `limit`, default 100, maximum 200; a larger limit is refused), and `prompts`; when returned is less than matched, narrow the filter. An entry without a facet never matches a filter on that facet. Each entry carries its route pace in metres per second (zero performs in place), its tags, and, when the library knows them, its category, laterality, posture (the stance a beat begins in and leaves the actor in, for chaining beats), and duration (a hint in frames, on a caption that completes an action). set_motion_span and author_scene accept exactly these prompt strings; a prompt's row loads the first time a span uses it.",
+      "Search the motion prompts that an actor can perform. `query` matches each word against the caption, its tags, its category, its laterality, and its posture. The other filters are `category`, `tag`, `enter`, `exit`, `minPace`, and `maxPace`. All the filters you give must match. If you give no query and no filter, the result holds only the counts. Set `all` only if you need the whole catalogue. Each result gives the caption exactly as set_motion_span and author_scene accept it, the route pace, the tags, and the posture and duration hints that exist.",
     execute: async (raw) => {
       const input = ListMotionPromptsInput.assert(raw);
       const library = promptLibrary.list();
@@ -164,7 +186,7 @@ export const motionSpanTools = ({
   },
   {
     description:
-      "Add a new prompt to the library by encoding a caption with the exact text encoder (a sentence in the training caption style, such as 'A person raises both arms in victory.'). Give the route pace in metres per second the actor should travel under it; zero performs in place. The prompt persists with the scene and set_motion_span accepts it at once. When the encoder service is unreachable it fails and says so; the 75 library captions still work, so call list_motion_prompts and use the nearest one.",
+      "Add a new prompt to the library. The tool encodes your caption with the same text encoder that made the library. Write the caption in the style of the training captions, such as 'A person raises both arms in victory.' Give the route pace in metres each second that the actor must travel under this prompt. A pace of zero performs the prompt in place. The prompt stays with the scene, and set_motion_span accepts it immediately. If the encoder service does not answer, the tool fails and says so. The published library still works, so search it with list_motion_prompts and use the nearest caption.",
     execute: async (raw) => {
       const input = EncodeMotionPromptInput.assert(raw);
       const known = promptLibrary.find(input.prompt);
@@ -207,7 +229,7 @@ export const motionSpanTools = ({
   },
   {
     description:
-      "Set what one actor does over a frame range: one prompt string from list_motion_prompts. Overlapped spans are trimmed or split; the range snaps to the 40-frame generation grid. The actor replans from the edited span and its new motion appears as it generates.",
+      "Set what one actor does across a range of frames. Give one prompt from list_motion_prompts. The tool moves the range to the 40-frame generation grid, because a prompt can change only where a window starts. It cuts or divides the spans that the range covers. The actor then makes a new plan from the edited span, and you see the new motion as the model makes it.",
     execute: async (raw) => {
       const input = SetMotionSpanInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -331,7 +353,8 @@ export const motionSpanTools = ({
         prompt: input.prompt,
         snapped: start !== input.startFrame || end !== input.startFrame + input.durationFrames,
         startFrame: start,
-        status: "committed; the actor replans from this span and its motion appears as it generates",
+        status:
+          "committed; the actor replans from this span and its motion appears as it generates",
         version: compositionRevision(result.committed.version),
       });
     },

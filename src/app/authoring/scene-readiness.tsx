@@ -10,21 +10,30 @@ export type SceneReadiness =
   | { readonly status: "failed"; readonly reason: string };
 
 const REQUIRED_FEATURE = "shader-f16";
+/**
+ * The engine's compute passes declare `requires immediate_address_space`, so a browser without the
+ * language feature fails while building the physics shader rather than while probing the adapter.
+ * Reading it here turns that WGSL validation error into a sentence a visitor can act on.
+ */
+const REQUIRED_LANGUAGE_FEATURE = "immediate_address_space";
 
-/** What this browser can offer the scene. The scene needs all three. */
+/** What this browser can offer the scene. The scene needs all four. */
 export interface SceneDevice {
   readonly adapter: boolean;
+  readonly languageFeature: boolean;
   readonly requiredFeature: boolean;
   readonly webgpu: boolean;
 }
 
 export const readDevice = async (): Promise<SceneDevice> => {
   if (navigator.gpu === undefined) {
-    return { adapter: false, requiredFeature: false, webgpu: false };
+    return { adapter: false, languageFeature: false, requiredFeature: false, webgpu: false };
   }
   const adapter = await navigator.gpu.requestAdapter().catch(() => null);
   return {
     adapter: adapter !== null,
+    // Older browsers carry no wgslLanguageFeatures set at all, which reads as absent.
+    languageFeature: navigator.gpu.wgslLanguageFeatures?.has(REQUIRED_LANGUAGE_FEATURE) ?? false,
     requiredFeature: adapter?.features.has(REQUIRED_FEATURE) ?? false,
     webgpu: true,
   };
@@ -45,6 +54,11 @@ const UNSUPPORTED_DEVICE = [
   {
     missing: ({ requiredFeature }: SceneDevice) => !requiredFeature,
     reason: `This browser does not have the ${REQUIRED_FEATURE} feature that this scene needs. Open the page in Google Chrome on a desktop computer.`,
+  },
+  {
+    missing: ({ languageFeature }: SceneDevice) => !languageFeature,
+    reason:
+      "This browser's WebGPU is too old for the physics shaders this scene builds. Chrome 149 and later carry what it needs; an older Chrome or an embedded browser does not.",
   },
 ] as const;
 
@@ -72,7 +86,7 @@ export const SceneReadinessTool = ({
     {
       annotations: { idempotentHint: true, readOnlyHint: true },
       description:
-        "Report whether the motion scene has opened, and what the browser's WebGPU support is. While the status is opening, the scene's own operations are not yet registered. A device without WebGPU or without the required shader-f16 feature will never open the scene. A reset field appears when the saved scene was discarded and a new one opened in its place, which is how a fresh browser is told apart from a document that was thrown away. A progress field appears while the motion checkpoint is still downloading, with the bytes received of the total and which shard is arriving; a page that reports progress is working, not stuck, so wait and read again rather than reloading.",
+        "Report if the motion scene has opened, and what WebGPU this browser has. While the status is opening, the scene's own tools are not registered yet. A device without WebGPU will never open the scene. So will a device without the shader-f16 feature, or without the immediate_address_space language feature that the physics shaders need. A `reset` field appears if the saved scene was discarded and a new one opened in its place. It tells a new browser apart from a document that was thrown away. A `progress` field appears while the motion checkpoint downloads. It gives the bytes received, the total, and which shard is arriving. A page that reports progress is working, not stuck, so wait and read again instead of reloading.",
       execute: async () => {
         SceneReadinessInput.assert({});
         return webMcpResult({
@@ -91,10 +105,11 @@ export const SceneReadinessTool = ({
             additionalProperties: false,
             properties: {
               adapter: { type: "boolean" },
+              languageFeature: { type: "boolean" },
               requiredFeature: { type: "boolean" },
               webgpu: { type: "boolean" },
             },
-            required: ["adapter", "requiredFeature", "webgpu"],
+            required: ["adapter", "languageFeature", "requiredFeature", "webgpu"],
             type: "object",
           },
           progress: {

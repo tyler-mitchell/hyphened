@@ -1,10 +1,16 @@
 import type { TimelineCompositionChange, TimelineRuntime } from "@coretime/core";
 
-import { ACTOR_POOL_SPARE, type AuthoredStory, type MotionSceneComposition } from "../schema";
+import {
+  ACTOR_POOL_SPARE,
+  type AuthoredStory,
+  type MotionSceneComposition,
+  PromptItemData,
+} from "../schema";
 import {
   actorGroup,
   actorGroupId,
   actorIdOfRow,
+  MOTION_PROMPT_EVENT,
   SCENE_COMPOSITION,
   sceneCompositionEvents,
 } from "./composition";
@@ -15,19 +21,12 @@ type SceneChange = TimelineCompositionChange<typeof motionTimelineDeclaration>;
 
 export const STANDING_PROMPT = "A person is standing still.";
 
-/**
- * The rows the production opened with: the cast's rows plus the spare rows. The production
- * computes the same bound at open from the composition it opened on; a cast that shrank since
- * still has every row it opened with, so the story's cast size is the floor.
- */
-const openedRowCount = (scene: MotionSceneComposition, story: AuthoredStory): number =>
-  Math.max(story.actors.length, ...scene.actors.map(({ row }) => row + 1)) + ACTOR_POOL_SPARE;
+const openedRowCount = (story: AuthoredStory): number => story.actors.length + ACTOR_POOL_SPARE;
 
-/** How many actors can still join before the production runs out of rows. */
 export const freeActorRows = (input: {
   readonly scene: MotionSceneComposition;
   readonly story: AuthoredStory;
-}): number => openedRowCount(input.scene, input.story) - input.scene.actors.length;
+}): number => openedRowCount(input.story) - input.scene.actors.length;
 
 /** The composition change that adds an actor on the lowest free row, and the actor's identity. */
 export const addActorChange = async (input: {
@@ -38,7 +37,7 @@ export const addActorChange = async (input: {
   readonly story: AuthoredStory;
 }): Promise<{ readonly change: SceneChange; readonly id: string; readonly row: number }> => {
   const taken = new Set(input.scene.actors.map(({ row }) => row));
-  const rows = Array.from({ length: openedRowCount(input.scene, input.story) }, (_unused, row) => row);
+  const rows = Array.from({ length: openedRowCount(input.story) }, (_unused, row) => row);
   const row = rows.find((candidate) => !taken.has(candidate));
   if (row === undefined) {
     throw new Error(
@@ -98,6 +97,120 @@ export const removeActorChanges = (input: {
         : [],
     ),
     { composition: SCENE_COMPOSITION, node: actorGroupId(input.actor), type: "node/remove" },
+  ];
+};
+
+/** The change that re-captions one prompt span, keeping its exact range. */
+export const setSpanPromptChange = async (input: {
+  readonly item: string;
+  readonly prompt: string;
+  readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
+}): Promise<SceneChange> => {
+  if (promptLibrary.find(input.prompt) === undefined) {
+    throw new Error(`"${input.prompt}" is not in the prompt library.`);
+  }
+  const readout = await input.timeline.composition.read({ composition: SCENE_COMPOSITION });
+  const track = readout.composition.children
+    .flatMap((node) => (node.kind === "group" ? node.children : [node]))
+    .find((node) => node.kind === "track" && node.items.some(({ id }) => id === input.item));
+  const range =
+    track?.kind === "track"
+      ? track.items.find(({ id }) => id === input.item)?.range
+      : undefined;
+  const subject = track?.id.split("/")[1];
+  if (range === undefined || subject === undefined) {
+    throw new Error(`The scene has no prompt span "${input.item}".`);
+  }
+  // A library row loads the first time a span uses it.
+  await promptLibrary.ensure([input.prompt]);
+  const data = PromptItemData.assert({ prompt: input.prompt });
+  return {
+    composition: SCENE_COMPOSITION,
+    item: input.item,
+    type: "item/replace",
+    value: {
+      data,
+      id: input.item,
+      range: { clock: "motionFrame", duration: range.duration, start: range.start },
+      startEvent: { data, kind: MOTION_PROMPT_EVENT, subject },
+    },
+  };
+};
+
+const promptSpan = (input: {
+  readonly data: PromptItemData;
+  readonly duration: number;
+  readonly start: number;
+  readonly subject: string;
+}) => ({
+  data: input.data,
+  id: `prompt-${String(input.start)}/${input.subject}`,
+  range: { clock: "motionFrame" as const, duration: input.duration, start: input.start },
+  startEvent: { data: input.data, kind: MOTION_PROMPT_EVENT, subject: input.subject },
+});
+
+/**
+ * The changes that take one prompt span out and give its frames to a neighbour.
+ *
+ * An actor's prompt track tiles the whole scene, so a span cannot simply leave: the neighbour that
+ * closes the gap inherits its frames, and the span before it is preferred because its own start,
+ * which names it, does not move.
+ */
+export const removeSpanChanges = async (input: {
+  readonly item: string;
+  readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
+}): Promise<readonly SceneChange[]> => {
+  const readout = await input.timeline.composition.read({ composition: SCENE_COMPOSITION });
+  const tracks = readout.composition.children.flatMap((node) =>
+    node.kind === "group" ? node.children : [node],
+  );
+  const track = tracks.find(
+    (node) => node.kind === "track" && node.items.some(({ id }) => id === input.item),
+  );
+  if (track?.kind !== "track") throw new Error(`The scene has no span "${input.item}".`);
+  const subject = track.id.split("/")[1];
+  const spans = track.items
+    .flatMap((item) => (item.range === undefined ? [] : [{ ...item, range: item.range }]))
+    .toSorted((left, right) => left.range.start - right.range.start);
+  const at = spans.findIndex(({ id }) => id === input.item);
+  const span = spans[at];
+  if (span === undefined || subject === undefined) {
+    throw new Error(`"${input.item}" is not a prompt span.`);
+  }
+  if (spans.length < 2) throw new Error("An actor keeps at least one prompt for the whole scene.");
+  const previous = spans[at - 1];
+  const remove = { composition: SCENE_COMPOSITION, item: input.item, type: "item/remove" } as const;
+  if (previous !== undefined) {
+    return [
+      {
+        composition: SCENE_COMPOSITION,
+        item: previous.id,
+        type: "item/replace",
+        value: promptSpan({
+          data: PromptItemData.assert(previous.data),
+          duration: previous.range.duration + span.range.duration,
+          start: previous.range.start,
+          subject,
+        }),
+      },
+      remove,
+    ];
+  }
+  const next = spans[at + 1]!;
+  return [
+    remove,
+    { composition: SCENE_COMPOSITION, item: next.id, type: "item/remove" },
+    {
+      composition: SCENE_COMPOSITION,
+      track: track.id,
+      type: "item/add",
+      value: promptSpan({
+        data: PromptItemData.assert(next.data),
+        duration: span.range.duration + next.range.duration,
+        start: span.range.start,
+        subject,
+      }),
+    },
   ];
 };
 

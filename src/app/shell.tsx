@@ -1,12 +1,19 @@
 import { tv } from "@hyphened/ui/tv";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MotionParameterProgress } from "webgpu-engine/motion";
 import { WebGpuCanvas, useEngine, type WebGpuCanvasSessionFactory } from "webgpu-engine/react";
 
 import { MotionAgentObservability } from "./authoring/motion-agent-observability";
+import { characterTools } from "./authoring/character-tools";
+import { environmentTools } from "./authoring/environment-tools";
+import { NATIVE_WEBMCP } from "./authoring/native-webmcp";
+import { storyTools } from "./authoring/story-tools";
+import { useAgentTools } from "./authoring/use-agent-tool";
 import { AgentPanel } from "./agent/agent-panel";
+import { BrowserCapabilityNotice } from "./browser-capability-notice";
 import { MotionLibraryPanel } from "./library/motion-library";
+import { SceneLoading } from "./scene-loading";
 import {
   readDevice,
   SceneReadinessTool,
@@ -14,33 +21,27 @@ import {
   type SceneDevice,
   type SceneReadiness,
 } from "./authoring/scene-readiness";
-import { SceneTimeline, type StartScene } from "./timeline/scene-timeline";
+import { SceneTimeline, type SceneChoice } from "./timeline/scene-timeline";
 import { AUTHORED_STORIES } from "../scene/default";
+import { servedCharacter } from "../rig/characters";
 import { openMotionProduction } from "../stage/open";
 import {
   observeSceneProject,
+  openSceneProject,
   sceneProject,
   startNewScene,
   type SceneProject,
-  type SceneStoryChoice,
 } from "../scene/project";
 import { motionTimelineDeclaration } from "../scene/timeline";
 
 const sceneStyles = tv({
   slots: {
-    root: "relative isolate flex h-dvh w-screen flex-col overflow-hidden bg-slate-200",
+    root: "relative isolate flex h-dvh w-screen flex-col overflow-hidden bg-background",
     canvas: "block min-h-0 w-full flex-1 cursor-crosshair touch-none outline-none",
     // A cinema frame: the stage presents at 2.39:1 inside the canvas; the capture is unmasked.
     letterbox: "pointer-events-none absolute inset-x-0 h-[7%] bg-black",
     timeline: "flex h-72 shrink-0 flex-col",
-    failure: "m-auto max-w-prose p-6 font-mono text-sm text-red-700",
-    notice: "m-auto max-w-prose p-6 text-center text-base leading-relaxed text-slate-700",
-    // Over the stage, because the canvas has mounted and is empty while the checkpoint streams.
-    loading:
-      "pointer-events-none absolute inset-x-0 top-1/2 z-10 mx-auto w-max max-w-sm -translate-y-1/2 rounded-lg bg-white/90 px-6 py-4 text-center text-sm text-slate-700 shadow-lg",
-    loadingDetail: "mt-1 text-xs text-slate-500",
-    loadingTrack: "mt-3 h-1 w-full overflow-hidden rounded-full bg-slate-300",
-    loadingBar: "h-full rounded-full bg-slate-600 transition-[width] duration-300",
+    failure: "m-auto max-w-prose p-6 font-mono text-[13px] leading-relaxed text-destructive",
   },
 });
 
@@ -49,42 +50,62 @@ const sceneStyles = tv({
  * so importing the route object back would close a cycle and leave `Route` undefined at evaluation.
  */
 const indexRoute = getRouteApi("/");
-
-/** Whole megabytes, the unit a download reads in. */
-const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(0);
+const NATIVE_WEBMCP_AVAILABLE = NATIVE_WEBMCP;
 
 /** The failure with its cause chain: a wrapped step failure names what failed. */
-const describeFailure = (cause: unknown): string =>
-  cause instanceof Error
-    ? [cause.message, ...(cause.cause === undefined ? [] : [describeFailure(cause.cause)])].join(
-        " ← ",
-      )
-    : String(cause);
+const describeFailure = (cause: unknown): string => {
+  if (!(cause instanceof Error)) return String(cause);
+  // ArkType can include the complete rejected scene value after `was`. That internal document is
+  // useful in development logs and harmful at the public agent boundary, where the path and reason
+  // are the actionable facts.
+  const message = cause.message
+    .split(" • ")
+    .map((problem) => problem.split(" (was ")[0]!)
+    .join(" • ");
+  return [message, ...(cause.cause === undefined ? [] : [describeFailure(cause.cause)])].join(
+    " ← ",
+  );
+};
 
 const BoundSceneTimeline = ({
+  character,
   durationFrames,
-  seed,
-  startScene,
+  scene,
+  scenes,
 }: {
+  readonly character: string | undefined;
   readonly durationFrames: number;
-  readonly seed?: string;
-  readonly startScene: StartScene;
+  readonly scene: string;
+  readonly scenes: readonly SceneChoice[];
 }) => {
   const { restart, timeline } = useEngine<typeof motionTimelineDeclaration>();
   return (
     <SceneTimeline
+      character={character}
       durationFrames={durationFrames}
       restart={restart}
-      seed={seed}
-      startScene={startScene}
+      scene={scene}
+      scenes={scenes}
       timeline={timeline}
     />
   );
 };
 
 /** Rendered only once the session is open, so mounting it is the fact that the scene opened. */
-const SceneOpened = ({ onOpen }: { readonly onOpen: () => void }) => {
-  useEffect(onOpen, [onOpen]);
+const SceneOpened = ({
+  onOpen,
+  scene,
+}: {
+  readonly onOpen: (scene: string) => void;
+  readonly scene: string;
+}) => {
+  useEffect(() => onOpen(scene), [onOpen, scene]);
+  return null;
+};
+
+/** Durable project operations stay available while the current GPU scene opens or fails. */
+const ProjectAgentTools = () => {
+  useAgentTools([...characterTools(), ...environmentTools(), ...storyTools()]);
   return null;
 };
 
@@ -96,16 +117,22 @@ export const App = () => {
   // The durable scene (project catalog and journal) opens once, outside React, and its timeline
   // is supplied to the canvas so history survives a reload.
   const [project, setProject] = useState<SceneProject>();
+  const [scenes, setScenes] = useState<readonly SceneChoice[]>([]);
   // What this browser can offer. Undefined until the probe answers, so the canvas waits rather
   // than mounting a session that a browser without the required feature cannot open.
   const [device, setDevice] = useState<SceneDevice>();
-  // The checkpoint is 380 MB and streams inside the canvas session, after the canvas has mounted.
-  // The shell outlives that session, so the shell holds the count and shows it over the stage.
+  // The checkpoint streams inside the canvas session, which the shell outlives. Nothing on screen
+  // reads this: the scene shows one spinner until it opens. It answers the agent's readiness tool,
+  // which is where a caller asks how far along a boot is.
   const [progress, setProgress] = useState<MotionParameterProgress>();
+  // Closed: a browser that can run the scene has nothing to be told, and one missing WebMCP gets
+  // the notice's own pill, which opens this. A dialog over the stage on every visit is not news.
+  const [showAgentSetup, setShowAgentSetup] = useState(false);
   // The address is read once, at open. It is the visitor's intent for this visit; after that the
   // scene leads and the address follows it.
-  const { story: requested } = indexRoute.useSearch();
+  const { scene: requestedScene, story: requestedStory } = indexRoute.useSearch();
   const navigate = useNavigate();
+  const initialAddressHandled = useRef(false);
   useEffect(() => {
     const mount = { live: true };
     void readDevice().then((probed) => {
@@ -133,8 +160,7 @@ export const App = () => {
       setProject(next);
       void navigate({
         replace: true,
-        search: () =>
-          next.record.definition.seed === undefined ? {} : { story: next.record.definition.seed },
+        search: { scene: next.record.definition.id },
         to: "/",
       });
     });
@@ -143,43 +169,68 @@ export const App = () => {
       unobserve();
     };
   }, []);
-  // The address drives the scene. A story named there that is not the one playing opens, whether
-  // the visitor followed a link, chose from the picker, or pressed the back button; all three are
-  // the same navigation. The scene writing its own story back is a no-op here, which is what stops
-  // the two from chasing each other.
   useEffect(() => {
-    if (project === undefined || requested === undefined) return;
-    const addressed = AUTHORED_STORIES[requested];
-    if (addressed === undefined || requested === project.record.definition.seed) return;
+    if (project === undefined) return;
+    const mount = { live: true };
+    void project.catalog.list().then(
+      (entries) => {
+        if (mount.live) {
+          setScenes(
+            entries.map(({ definition }) => ({ id: definition.id, title: definition.title })),
+          );
+        }
+      },
+      (cause: unknown) => {
+        if (mount.live) setReadiness({ reason: describeFailure(cause), status: "failed" });
+      },
+    );
+    return () => {
+      mount.live = false;
+    };
+  }, [project]);
+  // The address owns scene selection. A story parameter creates a fresh document; a scene parameter
+  // opens that exact saved document. Project observation replaces either address with the active id.
+  useEffect(() => {
+    if (project === undefined || initialAddressHandled.current) return;
+    initialAddressHandled.current = true;
+    if (requestedScene !== undefined) {
+      if (requestedScene === project.record.definition.id) return;
+      setReadiness({ status: "opening" });
+      void openSceneProject(requestedScene).catch((cause: unknown) => {
+        setReadiness({ reason: describeFailure(cause), status: "failed" });
+      });
+      return;
+    }
+    if (requestedStory === undefined) return;
+    const addressed = AUTHORED_STORIES[requestedStory];
+    if (addressed === undefined || requestedStory === project.record.definition.seed) return;
     setReadiness({ status: "opening" });
-    void startNewScene({ seed: requested, story: addressed }).catch((cause: unknown) => {
+    void startNewScene({ seed: requestedStory, story: addressed }).catch((cause: unknown) => {
       setReadiness({ reason: describeFailure(cause), status: "failed" });
     });
-  }, [project, requested]);
-  const opened = useCallback(() => {
-    setReadiness({ status: "open" });
-    setProgress(undefined);
+  }, [project, requestedScene, requestedStory]);
+  const opened = useCallback((scene: string) => {
+    void sceneProject().then((active) => {
+      if (active.record.definition.id !== scene) return;
+      setReadiness({ status: "open" });
+      setProgress(undefined);
+    });
   }, []);
-  // The switch replaces the project, so the canvas and every control inside it unmount. Only the
-  // shell outlives that, so the shell owns the outcome: a switch that never reaches a scene is
-  // reported here instead of dying with the control that asked for it.
-  const startScene = useCallback(
-    (choice: SceneStoryChoice) => {
-      setReadiness({ status: "opening" });
-      return startNewScene(choice).then(
-        () => undefined,
-        (cause: unknown) => setReadiness({ reason: describeFailure(cause), status: "failed" }),
-      );
-    },
-    [],
-  );
   // Undefined while the probe runs and when the browser can run the scene; a sentence otherwise.
   const unsupported = device === undefined ? undefined : unsupportedDevice(device);
   const openSession: WebGpuCanvasSessionFactory<typeof motionTimelineDeclaration> = async ({
     timeline,
   }) => {
-    const held = await sceneProject();
+    const held = project;
+    if (held === undefined) throw new Error("The scene project is not open.");
     const session = await openMotionProduction({
+      character: servedCharacter(held.record.definition.character),
+      ...(held.record.definition.environment === undefined
+        ? {}
+        : { environment: held.record.definition.environment }),
+      ...(held.record.definition.render === undefined
+        ? {}
+        : { render: held.record.definition.render }),
       onProgress: setProgress,
       story: held.record.definition.story,
       timeline,
@@ -197,6 +248,7 @@ export const App = () => {
   return (
     <main className={styles.root()}>
       <SceneReadinessTool progress={progress} readiness={readiness} reset={project?.reset} />
+      <ProjectAgentTools />
       {/*
         Outside the canvas, because the canvas is exactly what a visitor without shader-f16 does not
         get. The panel exists so a browser with no WebMCP client can still call the page's tools, and
@@ -205,48 +257,42 @@ export const App = () => {
         it needs no engine.
       */}
       <AgentPanel />
-      {unsupported === undefined ? null : <p className={styles.notice()}>{unsupported}</p>}
-      {progress === undefined || readiness.status !== "opening" ? null : (
-        <div className={styles.loading()}>
-          <p>
-            Loading the motion model, {megabytes(progress.loadedBytes)} MB of{" "}
-            {megabytes(progress.totalBytes)} MB.
-          </p>
-          <p className={styles.loadingDetail()}>
-            Part {progress.shard} of {progress.shardCount}. Your browser keeps it for the next
-            visit.
-          </p>
-          <div className={styles.loadingTrack()}>
-            <div
-              className={styles.loadingBar()}
-              style={{
-                width: `${String(Math.round((progress.loadedBytes / progress.totalBytes) * 100))}%`,
-              }}
-            />
-          </div>
-        </div>
+      {device === undefined || readiness.status === "opening" ? null : (
+        <BrowserCapabilityNotice
+          capabilities={{ ...device, webMcp: NATIVE_WEBMCP_AVAILABLE }}
+          onOpenChange={setShowAgentSetup}
+          open={showAgentSetup}
+        />
       )}
+      {readiness.status === "opening" ? <SceneLoading /> : null}
       {readiness.status === "failed" && unsupported === undefined ? (
         <p className={styles.failure()}>The scene did not open: {readiness.reason}</p>
       ) : null}
       {project === undefined || device === undefined || unsupported !== undefined ? null : (
         <WebGpuCanvas
-          key={project.record.definition.id}
+          key={`${project.record.definition.id}/${project.record.definition.character ?? ""}/${JSON.stringify(project.record.definition.environment ?? [])}/${JSON.stringify(project.record.definition.render ?? {})}`}
           className={styles.canvas()}
-          onError={(cause) => setReadiness({ reason: describeFailure(cause), status: "failed" })}
+          onError={(cause) => {
+            const failedScene = project.record.definition.id;
+            void sceneProject().then((active) => {
+              if (active.record.definition.id !== failedScene) return;
+              setReadiness({ reason: describeFailure(cause), status: "failed" });
+            });
+          }}
           openSession={openSession}
           timeline={project.timeline}
         >
-          <SceneOpened onOpen={opened} />
+          <SceneOpened onOpen={opened} scene={project.record.definition.id} />
           <MotionAgentObservability />
           <MotionLibraryPanel />
           <div className={styles.letterbox({ className: "top-0" })} />
           <div className={styles.letterbox({ className: "bottom-72" })} />
           <div className={styles.timeline()}>
             <BoundSceneTimeline
+              character={project.record.definition.character ?? undefined}
               durationFrames={project.record.definition.story.frameCount}
-              seed={project.record.definition.seed}
-              startScene={startScene}
+              scene={project.record.definition.id}
+              scenes={scenes}
             />
           </div>
         </WebGpuCanvas>

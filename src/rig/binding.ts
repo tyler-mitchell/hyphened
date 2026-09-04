@@ -19,21 +19,40 @@ export interface MotionRigBinding<Rig extends EmbodimentRig = EmbodimentRig> {
   readonly rig: Rig;
 }
 
-const exactJointOrder = (input: {
-  readonly embodiment: EmbodimentRestPose["skeleton"];
-  readonly motion: MotionSkeletonDefinition;
-}): boolean =>
-  input.motion.jointNames.length === input.embodiment.jointNames.length &&
-  input.motion.jointNames.every((name, joint) => input.embodiment.jointNames[joint] === name);
+const listed = (names: readonly string[]): string =>
+  names.length > 8 ? `${names.slice(0, 8).join(", ")} and ${String(names.length - 8)} more` : names.join(", ");
 
-const exactHierarchy = (input: {
+/**
+ * Every way a rig differs from the motion skeleton, named. A rig that cannot drive the model is the
+ * ordinary case when a character comes from elsewhere, and the difference is the whole diagnosis.
+ */
+const differences = (input: {
   readonly embodiment: EmbodimentRestPose["skeleton"];
   readonly motion: MotionSkeletonDefinition;
-}): boolean =>
-  input.motion.parentJointIndices.length === input.embodiment.parentJointIndices.length &&
-  input.motion.parentJointIndices.every(
-    (parent, joint) => input.embodiment.parentJointIndices[joint] === parent,
+}): readonly string[] => {
+  const rigJoints = input.embodiment.jointNames;
+  const motionJoints = input.motion.jointNames;
+  const missing = motionJoints.filter((name) => !rigJoints.includes(name));
+  const extra = rigJoints.filter((name) => !motionJoints.includes(name));
+  const reordered = motionJoints.filter(
+    (name, joint) => rigJoints.includes(name) && rigJoints[joint] !== name,
   );
+  const reparented = motionJoints.filter(
+    (name, joint) =>
+      rigJoints[joint] === name &&
+      input.embodiment.parentJointIndices[joint] !== input.motion.parentJointIndices[joint],
+  );
+  return [
+    ...(missing.length === 0 ? [] : [`missing ${String(missing.length)} joints (${listed(missing)})`]),
+    ...(extra.length === 0 ? [] : [`carries ${String(extra.length)} joints the model has no channel for (${listed(extra)})`]),
+    ...(missing.length > 0 || extra.length > 0 || reordered.length === 0
+      ? []
+      : [`orders ${String(reordered.length)} joints differently (${listed(reordered)})`]),
+    ...(reparented.length === 0
+      ? []
+      : [`parents ${String(reparented.length)} joints differently (${listed(reparented)})`]),
+  ];
+};
 
 /** Admit the zero-retargeting case used by character skins authored to the canonical skeleton. */
 export const bindMotionRig = <Rig extends EmbodimentRig>(input: {
@@ -43,15 +62,18 @@ export const bindMotionRig = <Rig extends EmbodimentRig>(input: {
   | { readonly status: "available"; readonly value: MotionRigBinding<Rig> }
   | { readonly status: "unavailable"; readonly reason: string } => {
   const embodimentSkeleton = input.rig.restPose.skeleton;
-  if (
-    embodimentSkeleton.jointCount !== input.motionSkeleton.jointCount ||
-    embodimentSkeleton.rootJointIndex !== input.motionSkeleton.rootJointIndex ||
-    !exactJointOrder({ embodiment: embodimentSkeleton, motion: input.motionSkeleton }) ||
-    !exactHierarchy({ embodiment: embodimentSkeleton, motion: input.motionSkeleton })
-  ) {
+  const difference = differences({
+    embodiment: embodimentSkeleton,
+    motion: input.motionSkeleton,
+  });
+  if (difference.length > 0 || embodimentSkeleton.rootJointIndex !== input.motionSkeleton.rootJointIndex) {
+    const rootDifference =
+      embodimentSkeleton.rootJointIndex === input.motionSkeleton.rootJointIndex
+        ? []
+        : [`roots at joint ${String(embodimentSkeleton.rootJointIndex)} rather than ${String(input.motionSkeleton.rootJointIndex)}`];
     return {
       status: "unavailable",
-      reason: `embodiment rig is not directly compatible with ${input.motionSkeleton.sourceTarget}`,
+      reason: `this rig cannot drive ${input.motionSkeleton.sourceTarget}: it ${[...difference, ...rootDifference].join("; it ")}`,
     };
   }
   const motionRestPose = MotionSkeletonRestPose({

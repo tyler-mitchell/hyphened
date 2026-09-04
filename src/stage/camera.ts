@@ -123,6 +123,7 @@ export const createMotionCamera = (input: {
         capacity: 1,
         initial: [
           MotionView({
+            eye: d.vec4f(),
             groundOrigin: d.vec4f(),
             lightDirection: d.vec4f(...input.program.lightDirection, 0),
             viewProjection: d.mat4x4f(),
@@ -258,6 +259,7 @@ export const createMotionCamera = (input: {
             d.vec4f(0, 0, near * far * depth, 0),
           );
           io.$.view[d.u32(0)] = MotionView({
+            eye: d.vec4f(resolvedPosition.x, resolvedPosition.y, resolvedPosition.z, 1),
             groundOrigin: d.vec4f(
               resolvedTarget.x,
               input.program.ground.height,

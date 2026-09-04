@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PlaygroundRouteImport } from './routes/playground'
 import { Route as ApiAgentRouteImport } from './routes/api.agent'
+import { Route as ApiMotionGifRouteImport } from './routes/api.motion-gif'
 import { Route as ApiMotionModelArtifactRouteImport } from './routes/api.motion-model.$artifact'
 
 const IndexRoute = IndexRouteImport.update({
@@ -18,9 +20,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlaygroundRoute = PlaygroundRouteImport.update({
+  id: '/playground',
+  path: '/playground',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAgentRoute = ApiAgentRouteImport.update({
   id: '/api/agent',
   path: '/api/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMotionGifRoute = ApiMotionGifRouteImport.update({
+  id: '/api/motion-gif',
+  path: '/api/motion-gif',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMotionModelArtifactRoute = ApiMotionModelArtifactRouteImport.update({
@@ -31,31 +43,55 @@ const ApiMotionModelArtifactRoute = ApiMotionModelArtifactRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/playground': typeof PlaygroundRoute
   '/api/agent': typeof ApiAgentRoute
+  '/api/motion-gif': typeof ApiMotionGifRoute
   '/api/motion-model/$artifact': typeof ApiMotionModelArtifactRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/playground': typeof PlaygroundRoute
   '/api/agent': typeof ApiAgentRoute
+  '/api/motion-gif': typeof ApiMotionGifRoute
   '/api/motion-model/$artifact': typeof ApiMotionModelArtifactRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/playground': typeof PlaygroundRoute
   '/api/agent': typeof ApiAgentRoute
+  '/api/motion-gif': typeof ApiMotionGifRoute
   '/api/motion-model/$artifact': typeof ApiMotionModelArtifactRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/agent' | '/api/motion-model/$artifact'
+  fullPaths:
+    | '/'
+    | '/playground'
+    | '/api/agent'
+    | '/api/motion-gif'
+    | '/api/motion-model/$artifact'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/agent' | '/api/motion-model/$artifact'
-  id: '__root__' | '/' | '/api/agent' | '/api/motion-model/$artifact'
+  to:
+    | '/'
+    | '/playground'
+    | '/api/agent'
+    | '/api/motion-gif'
+    | '/api/motion-model/$artifact'
+  id:
+    | '__root__'
+    | '/'
+    | '/playground'
+    | '/api/agent'
+    | '/api/motion-gif'
+    | '/api/motion-model/$artifact'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  PlaygroundRoute: typeof PlaygroundRoute
   ApiAgentRoute: typeof ApiAgentRoute
+  ApiMotionGifRoute: typeof ApiMotionGifRoute
   ApiMotionModelArtifactRoute: typeof ApiMotionModelArtifactRoute
 }
 
@@ -68,11 +104,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/playground': {
+      id: '/playground'
+      path: '/playground'
+      fullPath: '/playground'
+      preLoaderRoute: typeof PlaygroundRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/agent': {
       id: '/api/agent'
       path: '/api/agent'
       fullPath: '/api/agent'
       preLoaderRoute: typeof ApiAgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/motion-gif': {
+      id: '/api/motion-gif'
+      path: '/api/motion-gif'
+      fullPath: '/api/motion-gif'
+      preLoaderRoute: typeof ApiMotionGifRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/motion-model/$artifact': {
@@ -87,7 +137,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  PlaygroundRoute: PlaygroundRoute,
   ApiAgentRoute: ApiAgentRoute,
+  ApiMotionGifRoute: ApiMotionGifRoute,
   ApiMotionModelArtifactRoute: ApiMotionModelArtifactRoute,
 }
 export const routeTree = rootRouteImport

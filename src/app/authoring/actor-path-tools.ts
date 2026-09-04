@@ -42,7 +42,7 @@ export const actorPathTools = ({
 }): readonly RegisteredWebMcpTool[] => [
   {
     description:
-      "Set the planar path one actor travels, as [x, z] points in metres in the actor's own frame starting at its origin. The route is recomputed from the path and the actor's prompt spans, whose paces set the timetable; the actor replans from the next window.",
+      "Set the planar path that one actor travels. Give [x, z] points in metres, in the actor's own frame, from its origin. The route comes from the path and the actor's prompt spans. The paces of those spans set the times. The actor makes a new plan from the next window.",
     execute: async (raw) => {
       const input = SetActorPathInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -105,7 +105,8 @@ export const actorPathTools = ({
       await synchronize();
       return webMcpResult({
         actor: input.actor,
-        status: "committed; the actor replans from the next window and follows the new path as it generates",
+        status:
+          "committed; the actor replans from the next window and follows the new path as it generates",
         version: compositionRevision(result.committed.version),
         vertices: route.length,
       });

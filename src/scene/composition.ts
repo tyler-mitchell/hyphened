@@ -59,7 +59,7 @@ export const ACTOR_TRACKS = {
   root: {
     admits: RootConstraint,
     glyph: "route",
-    label: "2D Root",
+    label: "Waypoints",
     overlap: "allow",
     tone: "root",
   },
@@ -128,7 +128,7 @@ export const actorGroup = (subject: MotionSubjectDefinition, story: AuthoredStor
 
 /**
  * The body track: one entity per body placed in the world. Its components are its shape and
- * mass and where it stands (an actor's route at the item's frame, at an elevation). Lowering
+ * mass and where it stands (an actor's route at the item's frame, at an offset). Lowering
  * resolves each into a physics row.
  */
 export const bodyTrack = (
@@ -162,29 +162,48 @@ export const cameraTrack = (input: {
     },
     subject: id,
   }));
+  const emptyShot = {
+    data: CameraItemData.assert({
+      kind: "camera",
+      label: "Camera",
+      mode: "look-at",
+      position: [8, 6, 8],
+      projection: presentation.projection,
+      target: { kind: "point", position: [0, 1, 0] },
+    }),
+    id: "camera-0",
+    range: { clock: "motionFrame" as const, duration: input.durationFrames, start: 0 },
+  };
   return {
     data: { label: presentation.label },
     id: CAMERA_TRACK,
-    items: input.story.coverage.flatMap((shot, index) => {
-      const subject = routes[shot.row % routes.length];
-      const end = Math.min(shot.end, input.durationFrames);
-      if (subject === undefined || end <= shot.start) return [];
-      return [
-        {
-          data: CameraItemData.assert(
-            presetCameraShot({
-              preset: shot.preset,
-              projection: presentation.projection,
-              range: { end, start: shot.start },
-              scene: { actors: routes },
-              subject,
-            }),
-          ),
-          id: `camera-${String(index)}`,
-          range: { clock: "motionFrame" as const, duration: end - shot.start, start: shot.start },
-        },
-      ];
-    }),
+    items:
+      routes.length === 0
+        ? [emptyShot]
+        : input.story.coverage.flatMap((shot, index) => {
+            const subject = routes[shot.row % routes.length];
+            const end = Math.min(shot.end, input.durationFrames);
+            if (subject === undefined || end <= shot.start) return [];
+            return [
+              {
+                data: CameraItemData.assert(
+                  presetCameraShot({
+                    preset: shot.preset,
+                    projection: presentation.projection,
+                    range: { end, start: shot.start },
+                    scene: { actors: routes },
+                    subject,
+                  }),
+                ),
+                id: `camera-${String(index)}`,
+                range: {
+                  clock: "motionFrame" as const,
+                  duration: end - shot.start,
+                  start: shot.start,
+                },
+              },
+            ];
+          }),
     kind: "track",
     overlap: "forbid",
   };
@@ -275,8 +294,7 @@ export const SceneComposition = $.SceneCompositionInput.merge({
     const frameCount =
       cameras[0] === undefined ? undefined : contiguousFrameCount(cameras[0].items);
     return (
-      (actors.length > 0 &&
-        rows.size === actors.length &&
+      (rows.size === actors.length &&
         cameras.length === 1 &&
         bodies.length <= 1 &&
         frameCount !== undefined &&
@@ -301,7 +319,7 @@ export const SceneComposition = $.SceneCompositionInput.merge({
       frameCount: contiguousFrameCount(cameraTrack.items)!,
       bodies: sceneBodies(composition.children).flatMap((track) =>
         track.items.map(({ at, data, id }) => ({
-          elevation: data.elevation,
+          offset: data.offset,
           halfExtents: data.halfExtents,
           id,
           mass: data.mass,

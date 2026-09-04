@@ -1,8 +1,7 @@
-import type { TimelineCompositionChange, TimelineRuntime } from "@coretime/core";
+import type { TimelineRuntime } from "@coretime/core";
 
 import { MOTION_FRAMES_PER_SECOND, type motionTimelineDeclaration } from "../../scene/timeline";
 import {
-  EditSceneCompositionInput,
   ReadSceneCompositionInput,
   ReadSceneHistoryInput,
   ReadSceneSummaryInput,
@@ -18,7 +17,6 @@ import {
   compositionRevision,
   SCENE_COMPOSITION,
   SceneComposition,
-  sceneCompositionEvents,
 } from "../../scene/composition";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
@@ -35,16 +33,14 @@ const failure = (cause: unknown) => ({
 });
 
 export const sceneCompositionTools = ({
-  synchronize,
   timeline,
 }: {
-  readonly synchronize: () => Promise<void>;
   readonly timeline: MotionTimeline;
 }): readonly RegisteredWebMcpTool[] => [
   {
     annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "Read the authored scene composition: its actor groups, prompt and root-constraint tracks, items, transitions, and current version.",
+      "Read the authored scene composition. The reply gives its actor groups, its prompt tracks, its root-constraint tracks, its items, its transitions, and its current version.",
     execute: async (raw) => {
       const input = ReadSceneCompositionInput.assert(raw);
       const readout = await timeline.composition.read({
@@ -72,11 +68,12 @@ export const sceneCompositionTools = ({
   {
     annotations: { idempotentHint: true, readOnlyHint: true },
     description:
-      "Read a compact summary of the scene: frame count, each actor's origin, prompt spans, and route end, the placed bodies, the camera shots with their views (mode, distance, pitch, yaw, target, and `to` when a shot moves), the transport (current frame, playing, rate), and the current version. Start here; call list_motion_prompts for the prompt library, and read the full composition only when you need item identities.",
+      "Read a compact summary of the active scene: its identity, cast, motion spans, routes, environment, bodies, camera shots, transport, and version. Built-in story definitions are omitted unless includeStories is true. Start here; read the full composition only when an exact timeline item identity is unavailable elsewhere.",
     execute: async (raw) => {
-      ReadSceneSummaryInput.assert(raw);
+      const input = ReadSceneSummaryInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
       const scene = SceneComposition.assert(readout.composition);
+      const project = await sceneProject();
       const transport = await timeline.transport.state();
       const { tick: frame } = await timeline.quantize({
         coordinate: transport.position,
@@ -98,6 +95,7 @@ export const sceneCompositionTools = ({
             })),
         })),
         bodies: scene.bodies.map(({ id, mass, subject, tick }) => ({ id, mass, subject, tick })),
+        environment: project.record.definition.environment ?? [],
         // Each shot carries its authored view (mode, distance, pitch, yaw, target, and `to` when it
         // moves), so an agent can frame a new cut relative to the existing ones.
         cameras: scene.cameraTrack.items
@@ -111,13 +109,11 @@ export const sceneCompositionTools = ({
         frameCount: scene.frameCount,
         framesPerSecond: MOTION_FRAMES_PER_SECOND,
         // How many actors add_actor can still seat before a new scene is needed.
-        freeActorRows: freeActorRows({
-          scene,
-          story: (await sceneProject()).record.definition.story,
-        }),
-        // The built-in stories, in the shape author_scene takes, so an agent can read one and
-        // write its own; control_motion_scene newScene opens one by id.
-        stories: Object.entries(AUTHORED_STORIES).map(([id, story]) => ({ id, ...story })),
+        freeActorRows: freeActorRows({ scene, story: project.record.definition.story }),
+        scene: project.record.definition.id,
+        ...(input.includeStories
+          ? { stories: Object.entries(AUTHORED_STORIES).map(([id, story]) => ({ id, ...story })) }
+          : {}),
         // Where the playhead is, so a capture or a cut can be placed without a transport read.
         transport: { frame, playing: transport.playing, rate: transport.rate },
         version: compositionRevision(readout.version),
@@ -131,9 +127,11 @@ export const sceneCompositionTools = ({
         actors: { items: { additionalProperties: true, type: "object" }, type: "array" },
         bodies: { items: { additionalProperties: true, type: "object" }, type: "array" },
         cameras: { items: { additionalProperties: true, type: "object" }, type: "array" },
+        environment: { items: { additionalProperties: true, type: "object" }, type: "array" },
         frameCount: { type: "integer" },
         framesPerSecond: { type: "number" },
         freeActorRows: { type: "integer" },
+        scene: { type: "string" },
         stories: { items: { additionalProperties: true, type: "object" }, type: "array" },
         transport: {
           additionalProperties: false,
@@ -151,66 +149,14 @@ export const sceneCompositionTools = ({
         "actors",
         "bodies",
         "cameras",
+        "environment",
         "frameCount",
         "framesPerSecond",
         "freeActorRows",
-        "stories",
+        "scene",
         "transport",
         "version",
       ],
-      type: "object",
-    },
-  },
-  {
-    description:
-      "Atomically commit canonical Core Time composition changes to the authored scene. The proposal carries its admitted basis through the same boundary the timeline editor uses, so malformed or stale data never reaches history or a device.",
-    execute: async (raw) => {
-      const input = EditSceneCompositionInput.assert(raw);
-      const preview = await timeline.composition
-        .preview({
-          changes: input.changes as unknown as TimelineCompositionChange<
-            typeof motionTimelineDeclaration
-          >[],
-        })
-        .then(
-          (value) => ({ value }),
-          (cause: unknown) => ({ cause }),
-        );
-      if ("cause" in preview) return failure(preview.cause);
-
-      const committed = await timeline.composition
-        .commit({
-          events: sceneCompositionEvents,
-          id: input.transactionId,
-          proposal: preview.value.proposal,
-        })
-        .then(
-          (value) => ({ value }),
-          (cause: unknown) => ({ cause }),
-        );
-      if ("cause" in committed) return failure(committed.cause);
-      await synchronize();
-
-      return webMcpResult({
-        changes: committed.value.changes,
-        status: committed.value.status,
-        summary: input.summary,
-        transactionId: committed.value.id,
-        version: compositionRevision(committed.value.version),
-      });
-    },
-    inputSchema: webMcpInputSchema(EditSceneCompositionInput),
-    name: "edit_scene_composition",
-    outputSchema: {
-      additionalProperties: false,
-      properties: {
-        changes: { items: { additionalProperties: true, type: "object" }, type: "array" },
-        status: { type: "string" },
-        summary: { type: "string" },
-        transactionId: { type: "string" },
-        version: { type: "string" },
-      },
-      required: ["changes", "status", "summary", "transactionId", "version"],
       type: "object",
     },
   },
@@ -330,7 +276,7 @@ export const sceneCompositionTools = ({
   },
   {
     description:
-      "Undo or redo the most recent authored scene edit through the same history the timeline editor uses; history spans this page session. Returns the resulting composition version.",
+      "Undo the last authored scene edit, or redo it. The tool uses the same history as the timeline editor. The history holds only this page session. The reply gives the composition version that results.",
     execute: async (raw) => {
       const input = SceneHistoryInput.assert(raw);
       const identity = { id: input.transactionId };
@@ -346,7 +292,6 @@ export const sceneCompositionTools = ({
       if (result.value === undefined) {
         return failure(new Error(`nothing to ${input.action}`));
       }
-      await synchronize();
       return webMcpResult({
         action: input.action,
         version: compositionRevision(result.value.version),

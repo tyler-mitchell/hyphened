@@ -48,8 +48,8 @@ const commitBodyChange = async (input: {
     );
 
 /**
- * Bodies placed by meaning: a box of a given mass standing where an actor's route is at a frame.
- * The item is composition data; lowering spawns it into the physics pool at once.
+ * Bodies placed by meaning: a box of a given mass at one sampled position on an actor's route.
+ * The item is composition data; lowering applies it to the physics pool after the commit.
  */
 export const bodyTools = ({
   synchronize,
@@ -60,7 +60,7 @@ export const bodyTools = ({
 }): readonly RegisteredWebMcpTool[] => [
   {
     description:
-      "Place or replace one body in the scene: a box with half extents in metres and a mass (0 is fixed, like a bar; above 0 is loose, like a crate), standing where an actor's route is at a frame, its centre `elevation` above the ground (omit it to rest the box on the ground; give half the height plus a gap for a bar to duck under). It enters physics at once: a loose body spawns, and a fixed body moves or resizes in place.",
+      "Put one body in the scene, or replace one. `tick` selects a point on the actor's route. `offset` moves the body from that point, in metres. If you give no offset, the body stands on the point. `halfExtents` is in metres. A mass of 0 makes a fixed body. A mass more than 0 makes a loose body. After the commit, the body goes into the physics: a loose body starts, and a fixed body moves or changes size where it is.",
     execute: async (raw) => {
       const input = SetBodyInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -79,8 +79,8 @@ export const bodyTools = ({
       const value = {
         at: { clock: "motionFrame" as const, tick: input.tick },
         data: BodyItemData.assert({
-          // A body without an elevation rests on the ground: its centre sits half its height up.
-          elevation: input.elevation ?? input.halfExtents[1],
+          // A body without an offset rests on the route point: its centre sits half its height up.
+          offset: input.offset ?? [0, input.halfExtents[1], 0],
           halfExtents: input.halfExtents,
           label: input.label,
           mass: input.mass,
@@ -116,7 +116,7 @@ export const bodyTools = ({
   },
   {
     description:
-      "Remove one body from the scene by its item id. It leaves physics at once.",
+      "Remove one body from the scene. Give its item id. The body leaves the physics after the commit.",
     execute: async (raw) => {
       const input = RemoveBodyInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });

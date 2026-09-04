@@ -1,4 +1,5 @@
 import {
+  capabilityResourceKey,
   createTimelineClockCapability,
   definePipelineSystem,
   timelineClockReference,
@@ -22,12 +23,23 @@ import {
 import type { MotionPipelineProgram } from "../schema";
 import { createMotionBodies } from "./bodies";
 import { createMotionCamera, MOTION_CAMERA_COMMAND, MOTION_CAMERA_ID } from "./camera";
-import { createMotionRenderer, MOTION_CAPTURE_RESOURCE_KEY } from "./renderer";
+import {
+  createMotionRenderer,
+  MOTION_BASE_COLOR_RESOURCE_KEY,
+  MOTION_CAPTURE_RESOURCE_KEY,
+} from "./renderer";
+import type { EnvironmentRenderProgram } from "./environment";
 import { createSkinPalette } from "./skin";
 import { createMotionSurface } from "./surface";
 
 export const MOTION_PRODUCTION_ID = "motion-production";
+const MOTION_PRESENTATION_ID = "motion-presentation";
 export const MOTION_CAPTURE_RESOURCE_ID = `${MOTION_PRODUCTION_ID}/${MOTION_CAPTURE_RESOURCE_KEY}`;
+export const MOTION_BASE_COLOR_RESOURCE_ID = `${MOTION_PRODUCTION_ID}/${MOTION_BASE_COLOR_RESOURCE_KEY}`;
+export const MOTION_PRESENTED_RESOURCE_ID = `${MOTION_PRODUCTION_ID}/${capabilityResourceKey({
+  capabilityId: MOTION_PRESENTATION_ID,
+  localName: "presented",
+})}`;
 export const MOTION_CAMERA_COMMANDS = {
   frames: `${MOTION_CAMERA_ID}/${MOTION_CAMERA_COMMAND.frames}`,
   targetEntities: `${MOTION_CAMERA_ID}/${MOTION_CAMERA_COMMAND.targetEntities}`,
@@ -46,12 +58,15 @@ const phase = {
 
 /** Compose the real provider-to-pixel path as one WebGPU Engine capability graph. */
 export const createMotionPipelineSystem = (input: {
+  /** The base-colour array size as width, height, layers; one white texel when the character brought none. */
+  readonly baseColorSize: readonly [number, number, number];
   /** The scene's placed bodies, lowered from the composition: loose pool rows and fixed colliders. */
   readonly bodies: {
     readonly fixed: ReadonlyArray<PhysicsBodyInit>;
     readonly loose: ReadonlyArray<PhysicsBodyInit>;
   };
   readonly embeddings: () => ReadonlyArray<TextEmbedding>;
+  readonly environment: EnvironmentRenderProgram;
   readonly manifest: Parameters<typeof createMotionProvider>[0]["manifest"];
   readonly program: MotionPipelineProgram;
   readonly restPose: Parameters<typeof createMotionProvider>[0]["restPose"];
@@ -91,7 +106,7 @@ export const createMotionPipelineSystem = (input: {
   });
   const presentation = createProductMotionPresentation({
     clock: timelineClockReference(clock),
-    id: "motion-presentation",
+    id: MOTION_PRESENTATION_ID,
     phase: phase.motion,
     product: product.product,
     program: input.program.motion,
@@ -133,8 +148,10 @@ export const createMotionPipelineSystem = (input: {
     program: input.program.render,
   });
   const renderer = createMotionRenderer({
+    baseColorSize: input.baseColorSize,
     bodies,
     camera,
+    environment: input.environment,
     phase: phase.render,
     presentation,
     program: input.program.render,

@@ -58,7 +58,7 @@ export const cameraCompositionTools = ({
 }): readonly RegisteredWebMcpTool[] => [
   {
     description:
-      "Create or fully replace one camera timeline item: a shot. The item owns an exact motion-frame range and the camera view used by both the live stage and temporal capture. Adjacent items are hard cuts. The simplest shot is a preset framed off one actor's direction of travel, with its own lens and move: `{ kind: 'camera', preset, subject }` where preset is establishing (wide, all actors, 24 mm, push-in), tracking (alongside, 35 mm), follow (behind, 35 mm, settles closer), close-up (three-quarter front, 85 mm), low-angle (near the ground looking up, 28 mm), crane (descends from above, 32 mm), reveal (quarter orbit from behind to the side, 40 mm), or hero (ahead of the actor, 50 mm, slow push-in). Otherwise give the view: orbit (distance in metres, pitch and yaw in radians around the target) or look-at (position), with `to` for an eased move across the shot (orbit: distance, pitch, yaw; look-at: position) and `focalLength` in millimetres on a 35 mm filmback for the lens. `projection` and `target` may be omitted: the scene's perspective and a target on every actor apply. The new shot takes its frames from the shots it overlaps (they are trimmed, split, or removed), so the cuts stay contiguous.",
+      "Make one camera shot, or replace one completely. `startFrame` is the shot's first frame. `durationFrames` is how many frames it holds, and it does not include the frame after the last. If you give a `to` view, the camera moves to it and arrives on the last frame, with a smooth start and stop. Two shots next to each other make a hard cut. For a preset shot, use `{ kind: 'camera', preset, subject }`. The presets are establishing, tracking, follow, close-up, low-angle, crane, reveal, and hero. For an orbit view, give the distance in metres and the pitch and yaw in radians. For a look-at view, give the position. `focalLength` is in millimetres on a 35 mm filmback. If you give no `projection` or `target`, the scene supplies them. The new shot cuts, divides, or removes the shots it covers, so the camera track keeps no gaps.",
     execute: async (raw) => {
       const input = SetCameraTimelineItemInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -71,7 +71,9 @@ export const cameraCompositionTools = ({
       const end = Math.min(input.startFrame + input.durationFrames, scene.frameCount);
       if (end <= start) {
         return failure(
-          new Error(`The shot must begin before the scene's last frame ${String(scene.frameCount - 1)}.`),
+          new Error(
+            `The shot must begin before the scene's last frame ${String(scene.frameCount - 1)}.`,
+          ),
         );
       }
       const projection = DEFAULT_SCENE_PRESENTATION.camera.projection;
@@ -155,7 +157,10 @@ export const cameraCompositionTools = ({
                   composition: SCENE_COMPOSITION,
                   track: CAMERA_TRACK,
                   type: "item/add" as const,
-                  value: { ...shot({ end: itemEnd, start: end }), id: `${item.id}/after-${String(end)}` },
+                  value: {
+                    ...shot({ end: itemEnd, start: end }),
+                    id: `${item.id}/after-${String(end)}`,
+                  },
                 },
               ]
             : []),
@@ -209,7 +214,8 @@ export const cameraCompositionTools = ({
       const input = RemoveCameraTimelineItemInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
       const track = readout.composition.children.find((node) => node.id === CAMERA_TRACK);
-      const removed = track?.kind === "track" ? track.items.find(({ id }) => id === input.id) : undefined;
+      const removed =
+        track?.kind === "track" ? track.items.find(({ id }) => id === input.id) : undefined;
       if (track?.kind !== "track" || removed?.range === undefined) {
         return failure(new Error(`The camera track has no timeline item "${input.id}".`));
       }

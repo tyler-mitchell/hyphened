@@ -106,11 +106,17 @@ const PINNED_PROMPTS: Readonly<Record<string, PinnedPrompt | undefined>> = {
 };
 
 const entries = new Map<string, MotionPrompt>(
-  MOTION_PROMPT_LIBRARY.map(({ prompt, sha256 }) => {
-    const pinned = PINNED_PROMPTS[prompt];
+  MOTION_PROMPT_LIBRARY.map((source) => {
+    const pinned = PINNED_PROMPTS[source.prompt];
     return [
-      prompt,
-      { ...pinned, identity: sha256, pace: pinned?.pace ?? DEFAULT_PACE_METRES_PER_SECOND, prompt },
+      source.prompt,
+      {
+        ...pinned,
+        identity: source.sha256,
+        pace: pinned?.pace ?? DEFAULT_PACE_METRES_PER_SECOND,
+        prompt: source.prompt,
+        source,
+      },
     ];
   }),
 );
@@ -171,7 +177,8 @@ export const promptLibrary = {
     manifest.entries.forEach(
       ({ category, duration, laterality, pace, posture, prompt, sha256, slug, tags }) => {
         const known = entries.get(prompt);
-        if (known?.embedding !== undefined) return;
+        // A pinned row wins: its pace and posture are hand-tuned against the reference capture.
+        if (known?.embedding !== undefined || known?.source !== undefined) return;
         entries.set(prompt, {
           identity: sha256,
           pace,

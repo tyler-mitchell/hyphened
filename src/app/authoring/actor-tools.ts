@@ -31,7 +31,7 @@ export const actorTools = ({
   readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
 }): readonly RegisteredWebMcpTool[] => [
   {
-    description: `Add an actor to the running scene: where it stands in the world (origin, metres), its planar path in its own frame (default: stays where it stands), and its beats in order (default: "${STANDING_PROMPT}" for the whole scene). Beats must begin on window boundaries and sum to the scene's frame count. The actor appears from the next window boundary and its id is returned; the scene has a few spare rows beyond its cast, and author_scene opens a scene with any cast size.`,
+    description: `Add an actor to the running scene. \`origin\` is where the actor stands in the world, in metres. \`path\` is its planar path in its own frame. If you give no path, the actor stays where it stands. \`scenario\` is its beats in order. If you give no beats, the actor does "${STANDING_PROMPT}" for the whole scene. Each beat must start on a window boundary. The beats together must equal the scene's frame count. The composition changes immediately, and the model makes the motion after that. To build an empty scene, add all the actors and the camera first. Then use control_motion_scene restart before you capture, because restart waits for the first poses you can see. The scene holds a set number of spare rows, and read_scene_summary reports how many.`,
     execute: async (raw) => {
       const input = AddActorInput.assert(raw);
       const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
@@ -62,6 +62,7 @@ export const actorTools = ({
       return webMcpResult({
         actor: result.value.id,
         row: result.value.row,
+        status: "committed; learned motion is generating",
         version: compositionRevision(result.value.committed.version),
       });
     },
@@ -72,9 +73,10 @@ export const actorTools = ({
       properties: {
         actor: { type: "string" },
         row: { type: "integer" },
+        status: { type: "string" },
         version: { type: "string" },
       },
-      required: ["actor", "row", "version"],
+      required: ["actor", "row", "status", "version"],
       type: "object",
     },
   },

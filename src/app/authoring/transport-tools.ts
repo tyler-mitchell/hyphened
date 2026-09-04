@@ -15,10 +15,11 @@ export const transportTools = ({
   readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
 }): readonly RegisteredWebMcpTool[] => [
   {
-    description:
-      `Control the Core Time transport: play, pause, seek to a motion frame, step by ticks, set the playback rate, or restart. Playback pauses at the scene's last frame, and a seek past it is refused. The authored scene persists in this browser across reloads; newScene opens a fresh scene in place on a built-in story (\`story\`: ${storyChoices()
-        .map(({ id, title }) => `${id} = ${title}`)
-        .join(", ")}; the first when omitted) and the previous document stays in the catalog (read_scene_readiness reports open again once the tools are back). To open a scene on a story of your own, call author_scene.`,
+    description: `Control the transport. play starts the scene. pause stops it at the current frame. restart goes to frame 0 and plays. seek needs \`frame\`. step takes signed \`ticks\` and uses 1 if you give none. setRate needs a positive \`rate\`. The scene pauses at its last frame. A seek after the last frame is refused. The browser keeps the scene between reloads. newScene opens a new scene on a built-in story (\`story\`: ${storyChoices()
+      .map(({ id, title }) => `${id} = ${title}`)
+      .join(
+        ", ",
+      )}; the first if you give none). The old scene stays in the catalog. The tools go away while the new scene opens, then read_scene_readiness reports open again. To open a scene on your own story, use author_scene.`,
     execute: async (raw) => {
       const input = ControlMotionInput.assert(raw);
       if (input.action === "newScene") {
@@ -41,28 +42,21 @@ export const transportTools = ({
           rate: state.rate,
         });
       }
-      const actions = {
-        pause: () => timeline.transport.pause(),
-        play: () => timeline.transport.play(),
-        restart,
-        seek: async () => {
-          if (input.frame === undefined) throw new Error("seek needs a frame");
-          const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
-          const { frameCount } = SceneComposition.assert(readout.composition);
-          if (input.frame >= frameCount) {
-            throw new Error(
-              `Frame ${String(input.frame)} is past the scene's last frame ${String(frameCount - 1)}.`,
-            );
-          }
-          return timeline.transport.seekTo({ clock: "motionFrame", tick: input.frame });
-        },
-        setRate: () => {
-          if (input.rate === undefined) throw new Error("setRate needs a rate");
-          return timeline.transport.setRate({ rate: input.rate });
-        },
-        step: () => timeline.transport.stepBy({ ticks: input.ticks ?? 1 }),
-      } as const;
-      await actions[input.action]();
+      if (input.action === "pause") await timeline.transport.pause();
+      if (input.action === "play") await timeline.transport.play();
+      if (input.action === "restart") await restart();
+      if (input.action === "seek") {
+        const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
+        const { frameCount } = SceneComposition.assert(readout.composition);
+        if (input.frame >= frameCount) {
+          throw new Error(
+            `Frame ${String(input.frame)} is past the scene's last frame ${String(frameCount - 1)}.`,
+          );
+        }
+        await timeline.transport.seekTo({ clock: "motionFrame", tick: input.frame });
+      }
+      if (input.action === "setRate") await timeline.transport.setRate({ rate: input.rate });
+      if (input.action === "step") await timeline.transport.stepBy({ ticks: input.ticks ?? 1 });
       // The transport after the action, so the next decision needs no second read.
       const transport = await timeline.transport.state();
       const { tick: frame } = await timeline.quantize({

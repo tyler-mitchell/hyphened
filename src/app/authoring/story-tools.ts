@@ -1,10 +1,18 @@
 import { type } from "arktype";
 
 import { CAMERA_SHOT_PRESETS } from "../../scene/cinematography";
+import { SCENE_COMPOSITION, SceneComposition } from "../../scene/composition";
 import { authoredPromptSpans, storyChoices } from "../../scene/default";
-import { startNewScene } from "../../scene/project";
+import { openSceneProject, sceneProject, startNewScene } from "../../scene/project";
 import { promptLibrary } from "../../scene/prompts";
-import { AuthoredStory, AuthorSceneInput } from "../../schema";
+import { environmentAsset } from "../../stage/environment";
+import {
+  AuthoredStory,
+  AuthorSceneInput,
+  CreateSceneInput,
+  OpenSceneInput,
+  SceneReadinessInput,
+} from "../../schema";
 import { PUBLISHED_FRAMES_PER_WINDOW } from "webgpu-engine/motion";
 import { webMcpInputSchema, webMcpResult, type RegisteredWebMcpTool } from "./webmcp";
 
@@ -55,7 +63,150 @@ const storyRefusal = (story: AuthoredStory): string | undefined => {
 
 export const storyTools = (): readonly RegisteredWebMcpTool[] => [
   {
-    description: `Open a new scene on a story you author, the same shape the built-in stories use. Each actor is where it stands in the world (origin, metres), the planar path it follows in its own frame (x, z; the first point is its origin), and its beats in order: a caption from the prompt library held for a number of frames. Beats must begin on ${String(PUBLISHED_FRAMES_PER_WINDOW)}-frame boundaries and sum to frameCount, itself a multiple of ${String(PUBLISHED_FRAMES_PER_WINDOW)}; 20 frames is one second. Walking, running, and sprinting captions move the actor along its path at their pace; the rest are performed in place. The coverage is the cuts: contiguous shots from frame 0 to frameCount, each a preset (${CAMERA_SHOT_PRESETS.join(", ")}) on one actor by row index. The scene opens in place (read_scene_readiness reports open again once the tools are back) and the previous document stays in the catalog. Read list_motion_prompts for the captions; read_scene_summary lists the built-in stories to learn from.`,
+    description:
+      "Make a new empty scene and open it. The scene you have now stays saved and does not change. The new scene opens paused at frame 0. It has no actors, no bodies, and no environment. It has one camera on a point target, across all of its frames. Add the actors, the environment, the motion, and the camera. Then use control_motion_scene restart before you capture.",
+    execute: async (raw) => {
+      const input = CreateSceneInput.assert(raw);
+      if (input.frameCount % PUBLISHED_FRAMES_PER_WINDOW !== 0) {
+        return failure(
+          new Error(
+            `frameCount must be a multiple of ${String(PUBLISHED_FRAMES_PER_WINDOW)} frames`,
+          ),
+        );
+      }
+      const next = await startNewScene({
+        story: AuthoredStory.assert({
+          actors: [],
+          coverage: [],
+          frameCount: input.frameCount,
+          title: input.title,
+        }),
+      });
+      return webMcpResult({
+        actors: [],
+        frameCount: input.frameCount,
+        scene: next.record.definition.id,
+        status: "opening",
+        title: input.title,
+      });
+    },
+    inputSchema: webMcpInputSchema(CreateSceneInput),
+    name: "create_scene",
+    outputSchema: {
+      additionalProperties: false,
+      properties: {
+        actors: { items: { type: "string" }, type: "array" },
+        frameCount: { type: "integer" },
+        scene: { type: "string" },
+        status: { const: "opening", type: "string" },
+        title: { type: "string" },
+      },
+      required: ["actors", "frameCount", "scene", "status", "title"],
+      type: "object",
+    },
+  },
+  {
+    annotations: { idempotentHint: true, readOnlyHint: true },
+    description:
+      "List every saved scene document with its stable identity, title, current cast size, environment size, character, and active state. The scene marked active is the one the other tools act on. Use open_scene with an id from this list; create_scene and author_scene create another document without overwriting these.",
+    execute: async (raw) => {
+      SceneReadinessInput.assert(raw);
+      const { catalog } = await sceneProject();
+      const [active, entries] = await Promise.all([catalog.active(), catalog.list()]);
+      return webMcpResult({
+        scenes: entries.map(({ definition }) => {
+          const saved = definition.compositions?.[SCENE_COMPOSITION];
+          const composition = saved === undefined ? undefined : SceneComposition(saved);
+          return {
+            active: definition.id === active?.definition.id,
+            actors:
+              composition === undefined || composition instanceof type.errors
+                ? definition.story.actors.length
+                : composition.actors.length,
+            character: definition.character ?? "the released humanoid",
+            environmentEntities: definition.environment?.length ?? 0,
+            frameCount: definition.story.frameCount,
+            id: definition.id,
+            title: definition.title,
+          };
+        }),
+      });
+    },
+    inputSchema: webMcpInputSchema(SceneReadinessInput),
+    name: "list_scenes",
+    outputSchema: {
+      additionalProperties: false,
+      properties: {
+        scenes: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              active: { type: "boolean" },
+              actors: { type: "integer" },
+              character: { type: "string" },
+              environmentEntities: { type: "integer" },
+              frameCount: { type: "integer" },
+              id: { type: "string" },
+              title: { type: "string" },
+            },
+            required: [
+              "active",
+              "actors",
+              "character",
+              "environmentEntities",
+              "frameCount",
+              "id",
+              "title",
+            ],
+            type: "object",
+          },
+          type: "array",
+        },
+      },
+      required: ["scenes"],
+      type: "object",
+    },
+  },
+  {
+    description:
+      "Open one saved scene document by the stable id returned from list_scenes. The current document remains saved in the catalog, and the WebMCP tools re-register on the opened scene.",
+    execute: async (raw) => {
+      const input = OpenSceneInput.assert(raw);
+      try {
+        const next = await openSceneProject(input.scene);
+        const saved = next.record.definition.compositions?.[SCENE_COMPOSITION];
+        const composition = saved === undefined ? undefined : SceneComposition(saved);
+        return webMcpResult({
+          actors:
+            composition === undefined || composition instanceof type.errors
+              ? next.record.definition.story.actors.length
+              : composition.actors.length,
+          frameCount: next.record.definition.story.frameCount,
+          scene: next.record.definition.id,
+          status: "opening",
+          title: next.record.definition.title,
+        });
+      } catch (cause) {
+        return failure(cause);
+      }
+    },
+    inputSchema: webMcpInputSchema(OpenSceneInput),
+    name: "open_scene",
+    outputSchema: {
+      additionalProperties: false,
+      properties: {
+        actors: { type: "integer" },
+        frameCount: { type: "integer" },
+        scene: { type: "string" },
+        status: { const: "opening", type: "string" },
+        title: { type: "string" },
+      },
+      required: ["actors", "frameCount", "scene", "status", "title"],
+      type: "object",
+    },
+  },
+  {
+    description: `Make a new scene and open it, with its actors, its motion, its camera coverage, and, if you want, its environment and stage look. Do all of this in one call. Each actor has an origin, which is where it stands in the world, in metres. It has a planar path in its own frame, as (x, z) points, and the first point is its origin. It has beats in order, and each beat is a caption from the prompt library that the actor holds for a number of frames. Each beat must start on a ${String(PUBLISHED_FRAMES_PER_WINDOW)}-frame boundary. The beats together must equal frameCount, and frameCount must be a multiple of ${String(PUBLISHED_FRAMES_PER_WINDOW)}. 20 frames make one second. A walking, running, or sprinting caption moves the actor along its path at that caption's pace. The actor performs every other caption in place. Coverage is a sequence of preset shots with no gaps (${CAMERA_SHOT_PRESETS.join(", ")}), and each shot names an actor by its row. Environment entries use the assets that list_environment_assets returns. The render field sets the background, the ground, and the light. The scene you have now stays saved and does not change.`,
     execute: async (raw) => {
       const input = AuthorSceneInput.assert(raw);
       const story = AuthoredStory(input.story);
@@ -66,20 +217,33 @@ export const storyTools = (): readonly RegisteredWebMcpTool[] => [
       if (unknown !== undefined) {
         return failure(
           new Error(
-            `"${unknown}" is not in the prompt library; prompts: ${promptLibrary
-              .list()
-              .map(({ prompt }) => prompt)
-              .join(" | ")}`,
+            `"${unknown}" is not in the motion library. Use list_motion_prompts with a category, posture, pace, or tag filter to choose a supported caption.`,
+          ),
+        );
+      }
+      const unknownAsset = input.environment?.find(
+        ({ asset }) => environmentAsset(asset) === undefined,
+      );
+      if (unknownAsset !== undefined) {
+        return failure(
+          new Error(
+            `Environment asset "${unknownAsset.asset}" does not exist; call list_environment_assets.`,
           ),
         );
       }
       const refusal = storyRefusal(story);
       if (refusal !== undefined) return failure(new Error(refusal));
-      const next = await startNewScene({ story });
+      const next = await startNewScene({
+        ...(input.environment === undefined ? {} : { environment: input.environment }),
+        ...(input.render === undefined ? {} : { render: input.render }),
+        story,
+      });
       return webMcpResult({
         actors: story.actors.map((_actor, row) => `actor-${String(row + 1)}`),
+        environmentEntities: input.environment?.length ?? 0,
         frameCount: story.frameCount,
         scene: next.record.definition.id,
+        status: "opening",
         title: story.title,
       });
     },
@@ -89,11 +253,13 @@ export const storyTools = (): readonly RegisteredWebMcpTool[] => [
       additionalProperties: false,
       properties: {
         actors: { items: { type: "string" }, type: "array" },
+        environmentEntities: { type: "integer" },
         frameCount: { type: "integer" },
         scene: { type: "string" },
+        status: { const: "opening", type: "string" },
         title: { type: "string" },
       },
-      required: ["actors", "frameCount", "scene", "title"],
+      required: ["actors", "environmentEntities", "frameCount", "scene", "status", "title"],
       type: "object",
     },
   },

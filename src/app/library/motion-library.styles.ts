@@ -1,57 +1,36 @@
 import { tv } from "@hyphened/ui/tv";
 
+/**
+ * What the palette overrides on `@hyphened/ui`'s command component: the HUD's type scale, its
+ * monospaced numerals, and a fixed height so the dialog never grows over the timeline. Layout,
+ * filtering, grouping and keyboard selection belong to the component.
+ */
 export const motionLibraryStyles = tv({
   slots: {
-    count: "font-mono text-[9px] tabular-nums text-[var(--editor-text-muted)]",
-    empty: "px-3 py-6 text-center text-[10px] text-[var(--editor-text-muted)]",
-    filters: "flex shrink-0 flex-col gap-1.5 border-b border-[var(--editor-border)] px-2 py-2",
-    header:
-      "flex h-9 shrink-0 items-center justify-between gap-2 border-b border-[var(--editor-border)] bg-[var(--editor-panel)] px-2.5",
-    list: "min-h-0 flex-1 overflow-y-auto overscroll-contain",
-    root: "pointer-events-auto absolute top-3 left-3 z-30 flex max-h-[calc(100%-1.5rem)] w-72 flex-col overflow-hidden rounded-[6px] border border-[var(--editor-border)] bg-[var(--editor-panel)]/95 text-[var(--editor-text)] shadow-[0_10px_30px_rgb(0_0_0/0.45)] backdrop-blur-sm",
-    // The published package carries Button only, so the field is a plain input and this slot owns
-    // every one of its styles rather than leaning on the package's Input.
-    search:
-      "h-7 w-full min-w-0 rounded-[4px] border border-[var(--editor-border)] bg-[var(--editor-canvas)] px-2 text-[11px] text-[var(--editor-text)] outline-none transition-colors placeholder:text-[var(--editor-text-muted)] focus-visible:border-[var(--editor-info)] focus-visible:ring-1 focus-visible:ring-[var(--editor-info)]/50",
-    title: "text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--editor-text-secondary)]",
-  },
-});
+    launcher:
+      "pointer-events-auto absolute top-3 left-3 z-30 h-editor-control-row gap-2 rounded-full border-border-control bg-surface-control-panel pr-2 pl-3 text-[13px] text-foreground-control-muted shadow-editor-control-collapsed backdrop-blur-editor-control hover:bg-surface-control-panel hover:text-foreground-control",
+    shortcut:
+      "rounded-md bg-surface-control px-1.5 py-0.5 font-mono text-[11px] text-foreground-control-faint",
 
-export const motionLibraryChipStyles = tv({
-  slots: {
-    root: "flex flex-wrap gap-1",
-    chip: "h-5 rounded-[4px] px-1.5 text-[9px] font-medium tracking-wide uppercase",
-  },
-  variants: {
-    active: {
-      true: { chip: "bg-[var(--editor-accent-soft)] text-[var(--editor-text)]" },
-      false: { chip: "text-[var(--editor-text-muted)] hover:text-[var(--editor-text-secondary)]" },
-    },
-  },
-  defaultVariants: { active: false },
-});
+    dialog: "h-[420px]",
+    search: "h-12 text-[15px] font-medium",
 
-export const motionLibraryEntryStyles = tv({
-  slots: {
-    caption: "text-[11px] leading-snug text-[var(--editor-text)]",
-    facets: "flex flex-wrap items-center gap-1",
-    root: "flex flex-col gap-1 border-b border-white/[0.045] px-2.5 py-2 last:border-b-0",
-    tags: "font-mono text-[9px] text-[var(--editor-text-muted)]",
-  },
-});
+    filters: "no-scrollbar w-auto shrink-0 gap-1 overflow-x-auto border-b px-2 py-2",
+    chip: "shrink-0 rounded-md px-2 text-[13px] font-medium whitespace-nowrap",
+    chipCount: "font-mono text-[11px] tabular-nums opacity-50",
 
-/**
- * A facet badge. Posture is the one an author acts on, so it carries the accent; the rest stay
- * quiet. Travel reads as a speed, and an in-place caption says so rather than showing a zero.
- */
-export const motionLibraryFacetStyles = tv({
-  base: "inline-flex h-4 w-fit shrink-0 items-center rounded-[3px] px-1 font-mono text-[9px] whitespace-nowrap tabular-nums",
-  variants: {
-    facet: {
-      duration: "bg-white/[0.05] text-[var(--editor-text-muted)]",
-      laterality: "bg-white/[0.05] text-[var(--editor-text-muted)]",
-      pace: "bg-white/[0.06] text-[var(--editor-text-secondary)]",
-      posture: "bg-[var(--editor-accent-soft)] text-[var(--editor-text-secondary)]",
-    },
+    list: "no-scrollbar px-2 py-2",
+    group: "border-none p-0",
+    groupLabel:
+      "sticky top-0 z-[1] bg-popover px-2 pt-3 pb-1.5 font-mono text-[11px] tracking-[0.08em] uppercase",
+    item: "items-baseline gap-3 rounded-editor-control px-2 py-2",
+    caption: "min-w-0 flex-1 truncate text-[13px] leading-[18px] font-medium",
+    meta: "flex shrink-0 items-baseline gap-2 font-mono text-[11px] tabular-nums text-muted-foreground",
+    posture: "text-foreground",
+    empty: "text-[13px] font-medium",
+
+    footer:
+      "flex shrink-0 items-center justify-between gap-3 border-t px-4 py-2.5 font-mono text-[11px] text-muted-foreground",
+    hints: "flex items-center gap-3",
   },
 });

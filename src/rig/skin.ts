@@ -11,11 +11,22 @@ export const humanoidSkinAssetUrls = {
   binary: "/assets/ardy/humanoid/humanoid-skin.bin",
 } as const;
 
+/** One character's mesh and skin, as the stage consumes it, independent of where it was read. */
 export interface HumanoidSkinAsset {
+  /** One base-colour image per material, in layer order; the actor's colour when the file carries none. */
+  readonly baseColors?: ReadonlyArray<{
+    readonly bytes: Uint8Array<ArrayBuffer>;
+    readonly mimeType: string;
+  }>;
+  /** Each vertex's base-colour layer, present with `baseColors`. */
+  readonly materials?: Uint32Array;
+  /** Texture coordinates, present only for a character whose file carries them. */
+  readonly uvs?: Float32Array;
   /** Authored skin-bind root translation recovered from the root inverse-bind transform. */
   readonly bindRootPosition: readonly [number, number, number];
-  readonly manifest: HumanoidSkinManifest;
-  readonly binary: ArrayBuffer;
+  readonly influencesPerVertex: number;
+  readonly jointCount: number;
+  readonly vertexCount: number;
   readonly positions: Float32Array;
   readonly normals: Float32Array;
   readonly indices: Uint32Array;
@@ -37,6 +48,14 @@ export interface HumanoidRigAssetSource {
 }
 
 const fail = (reason: string): never => refuseEmbodimentAsset("rig", reason);
+
+/** A rig's standing height in metres: the span of its joints on the vertical axis. */
+export const humanoidRigHeight = (rig: HumanoidRigAssets): number => {
+  const elevations = Array.from(rig.restPose.jointPositions).filter(
+    (_unused, at) => at % 3 === 1,
+  );
+  return Math.max(...elevations) - Math.min(...elevations);
+};
 
 const fetchAsset = async (input: {
   readonly fetchImpl: typeof fetch;
@@ -97,16 +116,16 @@ const validatePayload = (asset: HumanoidSkinAsset): void => {
       label: "humanoid inverse-bind matrices",
       values: asset.inverseBindMatrices,
     }),
-    asset.indices.some((index) => index >= asset.manifest.vertexCount)
+    asset.indices.some((index) => index >= asset.vertexCount)
       ? "humanoid mesh contains an out-of-range vertex index"
       : undefined,
-    asset.jointIndices.some((index) => index >= asset.manifest.jointCount)
+    asset.jointIndices.some((index) => index >= asset.jointCount)
       ? "humanoid mesh contains an out-of-range skin joint index"
       : undefined,
     influenceViolation({
-      influencesPerVertex: asset.manifest.influencesPerVertex,
+      influencesPerVertex: asset.influencesPerVertex,
       values: asset.jointWeights,
-      vertexCount: asset.manifest.vertexCount,
+      vertexCount: asset.vertexCount,
     }),
   ].find((candidate): candidate is string => candidate !== undefined);
   if (violation !== undefined) fail(violation);
@@ -138,8 +157,9 @@ const admitPayload = (input: {
   });
   const skin: HumanoidSkinAsset = {
     bindRootPosition: bindRootPosition(inverseBindMatrices),
-    manifest: input.manifest,
-    binary: input.binary,
+    influencesPerVertex: input.manifest.influencesPerVertex,
+    jointCount: input.manifest.jointCount,
+    vertexCount: input.manifest.vertexCount,
     positions: view({ ...input, name: "positions", construct: Float32Array }),
     normals: view({ ...input, name: "normals", construct: Float32Array }),
     indices: view({ ...input, name: "indices", construct: Uint32Array }),

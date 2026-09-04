@@ -3,18 +3,22 @@ import type {
   TimelineRuntime,
   TimeScheduleCommandInput,
 } from "@coretime/core";
-import { physicsSpawnRecord, type PhysicsBodyInit } from "webgpu-engine";
+import {
+  decodeImageBitmap,
+  ingestImageTexture,
+  physicsSpawnRecord,
+  type ImageTextureSource,
+  type PhysicsBodyInit,
+} from "webgpu-engine";
 import type { WebGpuCanvasSession } from "webgpu-engine/react";
 
-import { loadHumanoidRigAssets } from "../rig/skin";
+import { humanoidRigHeight, loadHumanoidRigAssets } from "../rig/skin";
 import { bindMotionRig } from "../rig/binding";
 import { type } from "arktype";
 import {
   initialRequestFor,
   loadMotionProvider,
-  loadTextEmbedding,
   type MotionParameterProgress,
-  MOTION_PROMPT_LIBRARY,
   ONE_MOTION_FRAME,
   PUBLISHED_FRAMES_PER_WINDOW,
   replanRequestFor,
@@ -40,6 +44,7 @@ import {
   ActorPresence,
   type AuthoredStory,
   BODY_POOL_SPARE,
+  type EnvironmentEntity,
   MotionRenderConfiguration,
   type MotionRenderConfigurationInput,
   type MotionSceneComposition,
@@ -50,9 +55,11 @@ import {
   type ScenePresentationConfigurationInput,
 } from "../schema";
 import { authoredBodies, authoredOrigin } from "../scene/default";
+import { loadGltfCharacter } from "../rig/gltf-character";
 import { promptLibrary } from "../scene/prompts";
 import { compileMotionCompilation, compileMotionPipelineProgram } from "./compile";
-import { createMotionPipelineSystem } from "./system";
+import { loadEnvironment } from "./environment";
+import { createMotionPipelineSystem, MOTION_BASE_COLOR_RESOURCE_ID } from "./system";
 
 /** Lower the composition's bodies to physics rows: each stands on its actor's route at its frame. */
 const bodyInits = (
@@ -70,9 +77,9 @@ const bodyInits = (
               halfExtents: body.halfExtents,
               mass: body.mass,
               position: [
-                actor.worldOffset[0] + vertex.data.position[0],
-                actor.worldOffset[1] + body.elevation,
-                actor.worldOffset[2] + vertex.data.position[1],
+                actor.worldOffset[0] + vertex.data.position[0] + body.offset[0],
+                actor.worldOffset[1] + body.offset[1],
+                actor.worldOffset[2] + vertex.data.position[1] + body.offset[2],
               ] as const,
             },
           },
@@ -93,6 +100,9 @@ const physicsScheduleCommand = (input: {
 
 /** Acquire authored data and assets, then return one framework-owned production session. */
 export const openMotionProduction = async (input: {
+  /** The character file the actors wear; the released humanoid when absent. */
+  readonly character?: string;
+  readonly environment?: readonly EnvironmentEntity[];
   /** Called while the checkpoint streams, so the page can show the wait instead of a blank stage. */
   readonly onProgress?: (progress: MotionParameterProgress) => void;
   readonly presentation?: ScenePresentationConfigurationInput;
@@ -101,18 +111,26 @@ export const openMotionProduction = async (input: {
   readonly story: AuthoredStory;
   readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
 }): Promise<WebGpuCanvasSession<typeof motionTimelineDeclaration>> => {
-  const [provider, rig, ...loadedEmbeddings] = await Promise.all([
+  const [provider, released, environment] = await Promise.all([
     loadMotionProvider(),
     loadHumanoidRigAssets(),
-    ...MOTION_PROMPT_LIBRARY.map((source) => loadTextEmbedding({ source })),
+    loadEnvironment(input.environment ?? []),
   ]);
   if (provider.status === "unavailable") throw new Error(provider.reason);
-  const unavailableEmbedding = loadedEmbeddings.find(({ status }) => status === "unavailable");
-  if (unavailableEmbedding?.status === "unavailable") throw new Error(unavailableEmbedding.reason);
-  for (const loaded of loadedEmbeddings) {
-    if (loaded.status === "available") promptLibrary.admit({ embedding: loaded.value });
+  const worn =
+    input.character === undefined
+      ? undefined
+      : await loadGltfCharacter({
+          motionSkeleton: provider.manifest.skeleton,
+          targetHeight: humanoidRigHeight(released),
+          uri: input.character,
+        });
+  if (worn !== undefined && worn.rig === undefined) {
+    throw new Error(
+      `${input.character} cannot drive the motion model: it lacks ${worn.undrivable.join(", ")}`,
+    );
   }
-  await promptLibrary.loadManifest();
+  const rig = worn?.rig ?? released;
   const binding = bindMotionRig({ motionSkeleton: provider.manifest.skeleton, rig });
   if (binding.status === "unavailable") throw new Error(binding.reason);
   if (provider.manifest.config.framesPerSecond !== MOTION_FRAMES_PER_SECOND) {
@@ -127,8 +145,6 @@ export const openMotionProduction = async (input: {
     row,
     worldOffset: authoredOrigin(story, row),
   }));
-  // A scene without children is new: seed it. The seed is the floor of the session's history, not
-  // an edit an undo can take back; a reopened document already has its children.
   const opened = await input.timeline.composition.read({ composition: SCENE_COMPOSITION });
   if (opened.composition.children.length === 0) {
     await input.timeline.composition.edit({
@@ -145,7 +161,7 @@ export const openMotionProduction = async (input: {
                 subjects: seeded,
               }),
               ...seeded.map((subject) => actorGroup(subject, story)),
-              bodyTrack(authoredBodies()),
+              bodyTrack(authoredBodies(story, seeded)),
             ],
             clock: "motionFrame",
           },
@@ -172,7 +188,7 @@ export const openMotionProduction = async (input: {
     row,
     worldOffset,
   }));
-  const rowCount = Math.max(-1, ...cast.map(({ row }) => row)) + 1 + ACTOR_POOL_SPARE;
+  const rowCount = Math.max(story.actors.length + ACTOR_POOL_SPARE, ...cast.map(({ row }) => row + 1));
   const subjects = Array.from({ length: rowCount }, (_unused, row) => {
     const member = cast.find((candidate) => candidate.row === row);
     return member ?? { id: actorIdOfRow(row), row, worldOffset: [0, 0, 0] as const };
@@ -197,12 +213,34 @@ export const openMotionProduction = async (input: {
   const openedBodies = bodyInits(composition);
   const openedFixed = openedBodies.filter(({ init }) => isFixed(init));
   const openedLoose = openedBodies.filter(({ init }) => !isFixed(init));
+  const decoded = await Promise.all(
+    (rig.skin.baseColors ?? []).map(({ bytes, mimeType }) =>
+      decodeImageBitmap(new Blob([bytes], { type: mimeType })),
+    ),
+  );
+  // Array layers share one size, so each image is drawn onto the largest. UVs are normalised, so
+  // rescaling a layer does not move the texels a vertex reads.
+  const width = Math.max(1, ...decoded.map(({ width: each }) => each));
+  const height = Math.max(1, ...decoded.map(({ height: each }) => each));
+  const layers: ImageTextureSource[] =
+    decoded.length === 0
+      ? [new ImageData(new Uint8ClampedArray([255, 255, 255, 255]), 1, 1)]
+      : decoded.map((image) => {
+          const canvas = new OffscreenCanvas(width, height);
+          canvas.getContext("2d")?.drawImage(image, 0, 0, width, height);
+          return canvas;
+        });
+  // The actor shader always binds a 2-D array, and a texture declares itself an array by holding
+  // more than one layer. A character with one material repeats its layer; no vertex reads the copy.
+  const surfaces = layers.length > 1 ? layers : [layers[0]!, layers[0]!];
   const system = createMotionPipelineSystem({
+    baseColorSize: [width, height, surfaces.length],
     bodies: {
       fixed: openedFixed.map(({ init }) => init),
       loose: openedLoose.map(({ init }) => init),
     },
     embeddings: promptLibrary.embeddings,
+    environment,
     manifest: provider.manifest,
     program,
     restPose: binding.value.motionRestPose,
@@ -213,6 +251,13 @@ export const openMotionProduction = async (input: {
     requiredFeatures: ["shader-f16"],
     system,
     onOpen: async ({ engine, timeline }) => {
+      // Consumers of a pending texture are skipped, so the actors do not draw until this commits.
+      await ingestImageTexture({
+        device: engine.device,
+        id: MOTION_BASE_COLOR_RESOURCE_ID,
+        products: engine.products,
+        source: surfaces,
+      });
       const parameters = await provider.loadParameters({
         ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
         parameters: system.metadata.provider.parameters,
@@ -232,23 +277,27 @@ export const openMotionProduction = async (input: {
           }),
         ),
       );
-      await timeline.transport.stepBy({ ticks: 1 });
-      // Generation advances at the present moment whether or not the transport plays. Play only
-      // once every cast actor is presented at the first frame, so no actor appears mid-scene.
       const samples = system.metadata.motion.samples;
       const presentedId =
         system.capabilityExports[samples.capability]!.exports[samples.export]!.resource.id;
       const jointCount = system.metadata.motion.jointCount;
-      const everyActorPresented = async (): Promise<boolean> => {
+      const everyActorPresented = async (
+        actors: readonly { readonly row: number }[],
+      ): Promise<boolean> => {
         const presented = (await engine.read({ id: presentedId })) as readonly {
           readonly present: number;
         }[];
-        return cast.every(({ row }) => presented[row * jointCount]?.present === 1);
+        return actors.every(({ row }) => presented[row * jointCount]?.present === 1);
       };
-      while (!(await everyActorPresented())) {
-        // Each read settles after the device finishes the frame that ran before it.
+      // An empty scene stays at frame zero while the agent builds it. A populated scene starts only
+      // after every actor has a first GPU pose, so no performer appears after playback begins.
+      if (cast.length > 0) {
+        await timeline.transport.stepBy({ ticks: 1 });
+        while (!(await everyActorPresented(cast))) {
+          // Each read settles after the device finishes the frame that ran before it.
+        }
+        await timeline.transport.play();
       }
-      await timeline.transport.play();
       // An authored edit to an actor replans it from the first window boundary at least one
       // window ahead of the playhead. The request continues from the actor's own frames before
       // the boundary, and its motion replaces the old from there as each window generates.
@@ -417,7 +466,8 @@ export const openMotionProduction = async (input: {
             const commands = events.flatMap(({ payload }) => {
               const presence = ActorPresence(payload);
               if (presence instanceof type.errors) return [];
-              const generation = (generations.get(presence.subject) ?? 0) + 1;
+              const previousGeneration = generations.get(presence.subject);
+              const generation = (previousGeneration ?? 0) + 1;
               generations.set(presence.subject, generation);
               if (!presence.active) {
                 return [
@@ -426,11 +476,12 @@ export const openMotionProduction = async (input: {
                   }),
                 ];
               }
-              if (boundary === undefined) return [];
+              const admissionBoundary = previousGeneration === undefined ? 0 : boundary;
+              if (admissionBoundary === undefined) return [];
               return subjectAdmissionCommands({
                 request: replanRequestFor({
                   actor: presence.subject,
-                  boundary,
+                  boundary: admissionBoundary,
                   id: `admit-${presence.subject}-${String(generation)}`,
                   program: compilation,
                   revision: 0,
@@ -491,7 +542,15 @@ export const openMotionProduction = async (input: {
               }),
             }),
           ),
+          playing: false,
         });
+        if (scene.actors.length > 0) {
+          await timeline.transport.stepBy({ ticks: 1 });
+          while (!(await everyActorPresented(scene.actors))) {
+            // Each read settles after the device finishes the frame that ran before it.
+          }
+          await timeline.transport.play();
+        }
         await lowerBodies(
           scene.bodies.flatMap(({ id }) =>
             bodyRowOf.has(id) || staticRowOf.has(id) ? [] : [id],

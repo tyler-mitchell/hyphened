@@ -5,21 +5,29 @@ import type {
 } from "@coretime/core";
 import { timelineFractionToNumber } from "@coretime/core";
 import { useTimelineValue } from "@coretime/core/react";
-import { Toolbar } from "@base-ui/react/toolbar";
 import {
   formatTimelinePosition,
   Timeline,
+  type TimelineCompositionEditPermission,
   useTimelineCommand,
   useTimelineCompositionContext,
 } from "@coretime/editor";
+import { type } from "arktype";
 import { Button } from "@hyphened/ui/components/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@hyphened/ui/components/select";
 import { tv } from "@hyphened/ui/tv";
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronRight,
-  Copy,
-  FilePlus2,
+  Camera,
   Footprints,
   Hand,
   type LucideIcon,
@@ -27,27 +35,27 @@ import {
   Pause,
   PersonStanding,
   Play,
-  Redo2,
   RotateCcw,
   Route,
-  Trash2,
-  Undo2,
-  UserPlus,
+  Video,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { MOTION_FRAMES_PER_SECOND } from "webgpu-engine/motion";
-import { addActorChange, commitSceneChanges } from "../../scene/actors";
+import { useEngine } from "webgpu-engine/react";
+import { SERVED_CHARACTERS } from "../../rig/characters";
+import { recordScene } from "../../stage/record";
+import { wearCharacter } from "../../scene/project";
 import {
   actorTrack,
+  CAMERA_TRACK,
   SCENE_COMPOSITION,
   SceneComposition,
   sceneCompositionEvents,
 } from "../../scene/composition";
-import { AUTHORED_STORIES, DEFAULT_STORY, storyChoices } from "../../scene/default";
 import { observeSceneHistory, type SceneHistoryEntry } from "../../scene/history";
-import { sceneProject, type SceneStoryChoice } from "../../scene/project";
 import type { motionTimelineDeclaration } from "../../scene/timeline";
+import { PromptSpanEditor } from "./prompt-span-editor";
 import {
   timelineItemContentStyles,
   timelineItemResizeHandleStyles,
@@ -75,18 +83,33 @@ type MotionDeclaration = typeof motionTimelineDeclaration;
 
 export type RestartScene = () => Promise<void>;
 
-/** Open a new scene on a story. The shell owns the outcome, so this never rejects. */
-export type StartScene = (choice: SceneStoryChoice) => Promise<void>;
+export interface SceneChoice {
+  readonly id: string;
+  readonly title: string;
+}
 
 type ItemTone = NonNullable<Parameters<typeof timelineItemStyles>[0]>["tone"];
 
 const GLYPHS: Readonly<Record<string, LucideIcon>> = {
+  [CAMERA_TRACK]: Camera,
   foot: Footprints,
   hand: Hand,
   pose: PersonStanding,
   prompt: MessageSquareText,
   route: Route,
 };
+
+/**
+ * Whether the scene can still describe itself after an edit.
+ *
+ * An edit the scene cannot describe used to throw inside the event resolver, which reaches the
+ * editor as nothing happening. Refusing it here makes the same rule a denial the item can show.
+ */
+const sceneAdmits = (
+  permission: TimelineCompositionEditPermission<MotionDeclaration>,
+): boolean =>
+  permission.kind !== "proposal" ||
+  !(SceneComposition(permission.after.compositions[SCENE_COMPOSITION]) instanceof type.errors);
 
 const PROMPT_TONE_COUNT = 4;
 
@@ -122,16 +145,12 @@ const itemTone = (item: {
 const chromeStyles = tv({
   slots: {
     group:
-      "ml-1 flex h-7 items-center gap-0.5 rounded-[5px] border border-[var(--editor-border)] bg-[var(--editor-control)] px-0.5 shadow-inner aria-invalid:border-[var(--editor-danger)]/40",
+      "ml-1 flex h-7 items-center gap-0.5 rounded-editor-control border-0 bg-surface-control px-0.5 aria-invalid:bg-destructive/15",
     playIcon: "translate-x-px",
     position:
-      "min-w-[92px] px-1.5 text-center font-mono text-[9px] tabular-nums text-[var(--editor-text-secondary)]",
+      "min-w-[92px] px-1.5 text-center font-mono text-[11px] tabular-nums text-foreground-control-muted",
     story:
-      "h-5 max-w-[120px] rounded-[4px] border-0 bg-transparent px-1 text-[10px] text-[var(--editor-text-secondary)] outline-none hover:text-[var(--editor-text)] focus-visible:ring-1 focus-visible:ring-[var(--editor-info)]",
-    tool: "rounded-[4px] px-1.5 py-0.5 text-[10px] text-[var(--editor-text-secondary)] hover:text-[var(--editor-text)]",
-  },
-  variants: {
-    active: { true: { tool: "bg-[var(--editor-border)] text-[var(--editor-text)]" } },
+      "h-6 max-w-[140px] rounded-editor-control border-0 bg-transparent px-1.5 text-[13px] font-medium text-foreground-control-muted outline-none transition-colors duration-150 hover:text-foreground-control focus-visible:ring-1 focus-visible:ring-ring",
   },
 });
 
@@ -156,21 +175,65 @@ const TransportPosition = ({ timeline }: { timeline: TimelineRuntime<MotionDecla
 };
 
 const SceneTransportControls = ({
+  character,
   restart,
-  seed,
+  scene,
+  scenes,
   timeline,
 }: {
+  character: string | undefined;
   restart: RestartScene;
-  seed?: string;
+  scene: string;
+  scenes: readonly SceneChoice[];
   timeline: TimelineRuntime<MotionDeclaration>;
 }) => {
   const playing = useTimelineValue(timeline.state$.transport.playing);
   const command = useTimelineCommand();
   const navigate = useNavigate();
   const styles = chromeStyles();
-  // The picker starts on the story of the scene that is open, so after a switch it names what is
-  // playing instead of the default. A scene an agent authored has no built-in story to name.
-  const [choice, setChoice] = useState(seed ?? DEFAULT_STORY);
+  const { engine } = useEngine<MotionDeclaration>();
+  const [recorded, setRecorded] = useState<number | undefined>(undefined);
+  // Recording steps the transport frame by frame, so the file plays at the timeline's rate however
+  // slowly generation ran. The browser cannot start a download for the page, so the link is clicked.
+  const record = async () => {
+    const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
+    const composition = SceneComposition.assert(readout.composition);
+    setRecorded(0);
+    try {
+      const film = await recordScene({
+        engine,
+        frameCount: composition.frameCount,
+        onProgress: (frame: number) =>
+          setRecorded(Math.round((frame / composition.frameCount) * 100)),
+        timeline,
+      });
+      const href = URL.createObjectURL(film);
+      const link = window.document.createElement("a");
+      link.download = `${scene}.mp4`;
+      link.href = href;
+      link.click();
+      URL.revokeObjectURL(href);
+    } finally {
+      setRecorded(undefined);
+    }
+  };
+  const served = SERVED_CHARACTERS.find(({ url }) => url === character);
+  const choices =
+    served === undefined && character !== undefined
+      ? [
+          ...SERVED_CHARACTERS,
+          { id: character, title: character.split("/").pop() ?? character, url: character },
+        ]
+      : SERVED_CHARACTERS;
+  const worn = served ?? choices[choices.length - 1]!;
+  const transportAction = playing ? "Pause" : "Play";
+  const toggleTransport = () =>
+    void command.run(() => (playing ? timeline.transport.pause() : timeline.transport.play()));
+  useHotkey("Space", toggleTransport, {
+    enabled: !command.pending,
+    ignoreInputs: true,
+    requireReset: true,
+  });
 
   return (
     <div
@@ -180,12 +243,11 @@ const SceneTransportControls = ({
       title={command.errorMessage}
     >
       <Button
-        aria-label={playing ? "Pause" : "Play"}
+        aria-label={transportAction}
         disabled={command.pending}
-        onClick={() =>
-          void command.run(() => (playing ? timeline.transport.pause() : timeline.transport.play()))
-        }
+        onClick={toggleTransport}
         size="icon-xs"
+        title={`${transportAction} (Space)`}
         variant="ghost"
       >
         {playing ? <Pause /> : <Play className={styles.playIcon()} />}
@@ -202,30 +264,53 @@ const SceneTransportControls = ({
       >
         <RotateCcw />
       </Button>
-      {/* A fresh scene on a built-in story; the current document stays in the catalog. */}
-      <select
-        aria-label="Story"
-        className={styles.story()}
-        onChange={(event) => setChoice(event.target.value)}
-        value={choice}
-      >
-        {storyChoices().map(({ id, title }) => (
-          <option key={id} value={id}>
-            {title}
-          </option>
-        ))}
-      </select>
-      {/* The address owns which story plays, so this navigates and the shell opens what it names.
-          The back button then steps through scenes like any other page. */}
       <Button
-        aria-label="New scene"
-        disabled={command.pending}
-        onClick={() => void navigate({ search: { story: choice }, to: "/" })}
+        aria-label="Record"
+        disabled={command.pending || recorded !== undefined}
+        onClick={() => void command.run(record)}
         size="icon-xs"
+        title="Record the scene to an MP4"
         variant="ghost"
       >
-        <FilePlus2 />
+        {recorded === undefined ? <Video /> : <span className="text-[9px]">{recorded}</span>}
       </Button>
+      <Select
+        onValueChange={(value) => {
+          if (value !== null) void navigate({ search: { scene: value }, to: "/" });
+        }}
+        value={scene}
+      >
+        <SelectTrigger aria-label="Scene" className={styles.story()} size="sm">
+          <SelectValue>{scenes.find(({ id }) => id === scene)?.title ?? "Scene"}</SelectValue>
+        </SelectTrigger>
+        <SelectContent align="start">
+          {scenes.map(({ id, title }) => (
+            <SelectItem key={id} value={id}>
+              {title}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {choices.length < 2 ? null : (
+        <Select
+          onValueChange={(value) => {
+            const chosen = choices.find(({ id }) => id === value);
+            if (chosen !== undefined) void command.run(() => wearCharacter(chosen.url));
+          }}
+          value={worn.id}
+        >
+          <SelectTrigger aria-label="Character" className={styles.story()} size="sm">
+            <SelectValue>{worn.title}</SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start">
+            {choices.map(({ id, title }) => (
+              <SelectItem key={id} value={id}>
+                {title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <TransportPosition timeline={timeline} />
     </div>
   );
@@ -264,87 +349,6 @@ const SceneHistoryTrail = ({ timeline }: { timeline: TimelineRuntime<MotionDecla
   );
 };
 
-const SceneEditingControls = ({ timeline }: { timeline: TimelineRuntime<MotionDeclaration> }) => {
-  const editor = useTimelineCompositionContext<MotionDeclaration>();
-  const command = useTimelineCommand();
-  const styles = chromeStyles();
-  return (
-    <div className={styles.group()}>
-      <Button
-        aria-label="Undo"
-        disabled={!editor.history.canUndo || editor.history.pending}
-        onClick={() => void editor.history.undo()}
-        size="icon-xs"
-        variant="ghost"
-      >
-        <Undo2 />
-      </Button>
-      <Button
-        aria-label="Redo"
-        disabled={!editor.history.canRedo || editor.history.pending}
-        onClick={() => void editor.history.redo()}
-        size="icon-xs"
-        variant="ghost"
-      >
-        <Redo2 />
-      </Button>
-      <Button
-        aria-label="Duplicate selection"
-        disabled={!editor.selection.commands.canDuplicate}
-        onClick={() => void editor.selection.commands.duplicate()}
-        size="icon-xs"
-        variant="ghost"
-      >
-        <Copy />
-      </Button>
-      <Button
-        aria-label="Remove selection"
-        disabled={!editor.selection.commands.canRemove}
-        onClick={() => void editor.selection.commands.remove()}
-        size="icon-xs"
-        variant="ghost"
-      >
-        <Trash2 />
-      </Button>
-      {/* A new actor on a spare row, standing two metres right of the cast; the agent tool is
-          the same operation with a path and beats. */}
-      <Button
-        aria-label="Add actor"
-        disabled={command.pending}
-        onClick={() =>
-          void command.run(async () => {
-            const readout = await timeline.composition.read({ composition: SCENE_COMPOSITION });
-            const scene = SceneComposition.assert(readout.composition);
-            const project = await sceneProject();
-            const right = Math.max(0, ...scene.actors.map(({ worldOffset }) => worldOffset[0]));
-            const { change } = await addActorChange({
-              origin: [right + 2, 0, 0],
-              scene,
-              story: project.record.definition.story,
-            });
-            await commitSceneChanges({ author: "editor/add-actor", changes: [change], timeline });
-          })
-        }
-        size="icon-xs"
-        variant="ghost"
-      >
-        <UserPlus />
-      </Button>
-      <Toolbar.Root aria-label="Timeline editing tools" className="flex items-center gap-0.5">
-        {(["select", "slip", "slide", "split"] as const).map((tool) => (
-          <Timeline.EditToolButton
-            active={editor.tool.tool === tool}
-            className={styles.tool({ active: editor.tool.tool === tool })}
-            key={tool}
-            onToolChange={editor.tool.setTool}
-            tool={tool}
-          />
-        ))}
-      </Toolbar.Root>
-    </div>
-  );
-};
-
 const SceneTrackRow = ({
   children,
   indexed,
@@ -353,9 +357,9 @@ const SceneTrackRow = ({
   indexed: TimelineCompositionWindowTrack;
 }) => {
   const styles = timelineTrackStyles();
-  const label = stringField(indexed.track.data, "label") ?? indexed.track.id;
   const declared = actorTrack(indexed.track.id);
-  const Icon = GLYPHS[declared?.glyph ?? ""] ?? Footprints;
+  const label = declared?.label ?? stringField(indexed.track.data, "label") ?? indexed.track.id;
+  const Icon = GLYPHS[declared?.glyph ?? indexed.track.id] ?? Footprints;
   return (
     <Timeline.Track
       className={styles.root()}
@@ -379,14 +383,16 @@ const SceneTrackRow = ({
 };
 
 const SceneTimelineSurface = ({
+  character,
   restart,
-  seed,
-  startScene,
+  scene,
+  scenes,
   timeline,
 }: {
+  character: string | undefined;
   restart: RestartScene;
-  seed?: string;
-  startScene: StartScene;
+  scene: string;
+  scenes: readonly SceneChoice[];
   timeline: TimelineRuntime<MotionDeclaration>;
 }) => {
   const editor = useTimelineCompositionContext<MotionDeclaration>();
@@ -407,11 +413,12 @@ const SceneTimelineSurface = ({
         <div className={header.primary()}>
           <span className={header.label()}>Scene</span>
           <SceneTransportControls
+            character={character}
             restart={restart}
-            seed={seed}
+            scene={scene}
+            scenes={scenes}
             timeline={timeline}
           />
-          <SceneEditingControls timeline={timeline} />
         </div>
         <div className={header.status()}>
           <SceneHistoryTrail timeline={timeline} />
@@ -437,27 +444,43 @@ const SceneTimelineSurface = ({
         <Timeline.SelectionArea boxClassName={selectionArea.box()} className={selectionArea.root()}>
           <Timeline.CompositionTrackList<MotionDeclaration>
             className={trackList.root()}
-            renderGroup={({ group: indexed }) => (
-              <Timeline.Group
-                className={group.root()}
-                depth={indexed.ancestors.length}
-                node={indexed.group.id}
-                parent={indexed.ancestors.at(-1)}
-              >
-                <Timeline.GroupHeader
-                  className={group.header()}
-                  classNames={{ disclosure: group.disclosure(), label: group.label() }}
-                  collapsedIndicator={<ChevronRight />}
-                  expandedIndicator={<ChevronDown />}
-                  label={stringField(indexed.group.data, "label") ?? indexed.group.id}
-                />
-                <Timeline.GroupCanvas className={group.canvas()} />
-              </Timeline.Group>
-            )}
+            renderGroup={({ group: indexed }) => {
+              const expanded = editor.visibility.isExpanded(indexed.group.id);
+              const label = stringField(indexed.group.data, "label") ?? indexed.group.id;
+              return (
+                <Timeline.Group
+                  className={group.root()}
+                  depth={indexed.ancestors.length}
+                  node={indexed.group.id}
+                  parent={indexed.ancestors.at(-1)}
+                >
+                  <Timeline.GroupDisclosure
+                    className={group.header()}
+                    expanded={expanded}
+                    label={label}
+                    onExpandedChange={(next) =>
+                      editor.visibility.setExpanded({ expanded: next, group: indexed.group.id })
+                    }
+                  >
+                    <span aria-hidden className={group.disclosure()}>
+                      {expanded ? <ChevronDown /> : <ChevronRight />}
+                    </span>
+                    <span className={group.label()}>{label}</span>
+                  </Timeline.GroupDisclosure>
+                  <Timeline.GroupCanvas className={group.canvas()} />
+                </Timeline.Group>
+              );
+            }}
             renderItem={({ item }) => {
               const tone = itemTone({ data: item.item.data, track: item.track });
+              const prompt = stringField(item.item.data, "prompt");
               return (
                 <Timeline.CompositionItem
+                  decoration={
+                    prompt === undefined ? undefined : (
+                      <PromptSpanEditor item={item.item.id} timeline={timeline} />
+                    )
+                  }
                   classNames={{
                     item: ({ selected, status }) => ({
                       label: content.label(),
@@ -475,11 +498,8 @@ const SceneTimelineSurface = ({
                     },
                   }}
                   item={item}
-                  label={
-                    stringField(item.item.data, "prompt") ??
-                    stringField(item.item.data, "label") ??
-                    item.item.id
-                  }
+                  label={prompt ?? stringField(item.item.data, "label") ?? item.item.id}
+                  resizeMode="roll"
                   subtitle={(interaction) =>
                     interaction.duration === 0
                       ? ""
@@ -513,16 +533,18 @@ const SceneTimelineSurface = ({
 };
 
 export const SceneTimeline = ({
+  character,
   durationFrames,
   restart,
-  seed,
-  startScene,
+  scene,
+  scenes,
   timeline,
 }: {
+  character: string | undefined;
   durationFrames: number;
   restart: RestartScene;
-  seed?: string;
-  startScene: StartScene;
+  scene: string;
+  scenes: readonly SceneChoice[];
   timeline: Parameters<typeof Timeline.Root<MotionDeclaration>>[0]["timeline"];
 }) => (
   <Timeline.ErrorBoundary
@@ -552,15 +574,17 @@ export const SceneTimeline = ({
       viewport={{ initialRange: { duration: durationFrames, start: 0 } }}
     >
       <Timeline.Composition<MotionDeclaration>
+        canEdit={sceneAdmits}
         composition={SCENE_COMPOSITION}
         events={sceneCompositionEvents}
         rootComposition={SCENE_COMPOSITION}
         snapping={{ distance: 10 }}
       >
         <SceneTimelineSurface
+          character={character}
           restart={restart}
-          seed={seed}
-          startScene={startScene}
+          scene={scene}
+          scenes={scenes}
           timeline={timeline}
         />
       </Timeline.Composition>

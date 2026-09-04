@@ -20,8 +20,13 @@ import {
 
 export const compileMotionCameraProgram = (input: {
   readonly composition: MotionSceneComposition;
+  readonly subject?: string;
 }): MotionCameraProgramData => {
   const actorRows = new Map(input.composition.actors.map(({ row, subject }) => [subject, row]));
+  const subjectRow = input.subject === undefined ? undefined : actorRows.get(input.subject);
+  if (input.subject !== undefined && subjectRow === undefined) {
+    throw new Error(`The scene has no actor "${input.subject}" to frame.`);
+  }
   return MotionCameraProgram.assert({
     frames: Array.from({ length: input.composition.frameCount }, (_unused, frame) => {
       const item = input.composition.cameraTrack.items.find(
@@ -40,15 +45,19 @@ export const compileMotionCameraProgram = (input: {
               return row === undefined ? [] : [row];
             });
       const target =
-        data.target.kind === "point"
-          ? data.target
+        subjectRow === undefined
+          ? data.target.kind === "point"
+            ? data.target
+            : {
+                entities:
+                  remaining.length > 0 ? remaining : input.composition.actors.map(({ row }) => row),
+                kind: "entities" as const,
+                offset: data.target.offset,
+              }
           : {
-              entities:
-                remaining.length > 0
-                  ? remaining
-                  : input.composition.actors.map(({ row }) => row),
+              entities: [subjectRow],
               kind: "entities" as const,
-              offset: data.target.offset,
+              offset: data.target.kind === "entities" ? data.target.offset : ([0, 0, 0] as const),
             };
       const common = {
         interpolate: frame + 1 < item.range.start + item.range.duration,
@@ -149,21 +158,25 @@ export const compileMotionCompilation = (input: {
   const frameCount = input.composition.frameCount;
   return MotionCompilationProgram.assert({
     clips: input.composition.actors.flatMap((actor) =>
-      actor.promptTrack.items.map((item, clip) => ({
-        actor: actor.subject,
-        conditioning: item.conditioning,
-        frameCount: item.range.duration,
-        id: item.id,
-        rootTrack: actor.rootTrack.items.flatMap((keyframe) =>
-          keyframe.at.tick < item.range.start ||
-          keyframe.at.tick >= item.range.start + item.range.duration
-            ? []
-            : [{ ...keyframe.data, frame: keyframe.at.tick - item.range.start }],
-        ),
-        seed: INITIAL_PRODUCT_SEED + actor.row * 100 + clip,
-        sourceFrameStart: actor.row * frameCount + item.range.start,
-        timelineFrameStart: item.range.start,
-      })),
+      actor.promptTrack.items
+        .toSorted((left, right) => left.range.start - right.range.start)
+        .map((item, clip) => ({
+          actor: actor.subject,
+          conditioning: item.conditioning,
+          frameCount: item.range.duration,
+          id: item.id,
+          rootTrack: actor.rootTrack.items
+            .toSorted((left, right) => left.at.tick - right.at.tick)
+            .flatMap((keyframe) =>
+              keyframe.at.tick < item.range.start ||
+              keyframe.at.tick >= item.range.start + item.range.duration
+                ? []
+                : [{ ...keyframe.data, frame: keyframe.at.tick - item.range.start }],
+            ),
+          seed: INITIAL_PRODUCT_SEED + actor.row * 100 + clip,
+          sourceFrameStart: actor.row * frameCount + item.range.start,
+          timelineFrameStart: item.range.start,
+        })),
     ),
     frameCount,
     framesPerSecond: input.framesPerSecond,
@@ -211,7 +224,7 @@ export const compileMotionPipelineProgram = (input: {
   const jointCount = input.rig.motionRestPose.skeleton.jointCount;
   const jointPositions = input.rig.motionRestPose.jointPositions;
   const parentIndices = input.rig.motionRestPose.skeleton.parentJointIndices;
-  const influenceCount = skin.manifest.influencesPerVertex;
+  const influenceCount = skin.influencesPerVertex;
   const renderConfiguration = input.render ?? MotionRenderConfiguration.assert({});
   const render = MotionRenderProgram.assert({
     ...renderConfiguration,
@@ -244,8 +257,10 @@ export const compileMotionPipelineProgram = (input: {
           ];
     }),
     skeleton: input.rig.motionRestPose.skeleton.sourceTarget,
-    vertices: Array.from({ length: skin.manifest.vertexCount }, (_unused, vertex) => {
+    vertices: Array.from({ length: skin.vertexCount }, (_unused, vertex) => {
       const influence = vertex * influenceCount;
+      // A rig with four influences has no fifth; reading one takes the next vertex's first.
+      const fifth = influenceCount > 4 ? influence + 4 : undefined;
       return {
         joints0: [
           skin.jointIndices[influence]!,
@@ -253,7 +268,8 @@ export const compileMotionPipelineProgram = (input: {
           skin.jointIndices[influence + 2]!,
           skin.jointIndices[influence + 3]!,
         ],
-        joints1: [skin.jointIndices[influence + 4] ?? 0, 0, 0, 0],
+        joints1: [fifth === undefined ? 0 : (skin.jointIndices[fifth] ?? 0), 0, 0, 0],
+        material: skin.materials?.[vertex] ?? 0,
         normal: [
           skin.normals[vertex * 3]!,
           skin.normals[vertex * 3 + 1]!,
@@ -264,13 +280,14 @@ export const compileMotionPipelineProgram = (input: {
           skin.positions[vertex * 3 + 1]!,
           skin.positions[vertex * 3 + 2]!,
         ],
+        uv: [skin.uvs?.[vertex * 2] ?? 0, skin.uvs?.[vertex * 2 + 1] ?? 0],
         weights0: [
           skin.jointWeights[influence]!,
           skin.jointWeights[influence + 1]!,
           skin.jointWeights[influence + 2]!,
           skin.jointWeights[influence + 3]!,
         ],
-        weights1: [skin.jointWeights[influence + 4] ?? 0, 0, 0, 0],
+        weights1: [fifth === undefined ? 0 : (skin.jointWeights[fifth] ?? 0), 0, 0, 0],
       };
     }),
   });

@@ -1,9 +1,7 @@
-// The button subpath is the one component specifier both surfaces of this package carry: the
-// workspace maps ./components/* to source, and the published tarball packs button alone. The
-// fields below are plain inputs on this file's own slots for the same reason.
 import { Button } from "@hyphened/ui/components/button";
+import { Input } from "@hyphened/ui/components/input";
 import { Bot, Send, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { runAgentExchange, type AgentMessage, type AgentTurn } from "./agent-loop";
 import { agentPanelStyles, agentTurnStyles } from "./agent-panel.styles";
@@ -64,13 +62,21 @@ export const AgentPanel = () => {
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<ReadonlyArray<AgentTurn>>([]);
   const [history, setHistory] = useState<ReadonlyArray<AgentMessage>>([]);
+  // The scroller hides its scrollbar, so a turn below the fold is invisible and reads as a stall.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scroller.current !== null) scroller.current.scrollTop = scroller.current.scrollHeight;
+  }, [turns]);
 
   const send = async () => {
     const asked = prompt.trim();
     if (asked.length === 0 || key.trim().length === 0 || busy) return;
     setPrompt("");
     setBusy(true);
-    setTurns((current) => [...current, { body: asked, id: crypto.randomUUID(), speaker: "person" }]);
+    setTurns((current) => [
+      ...current,
+      { body: asked, id: crypto.randomUUID(), speaker: "person" },
+    ]);
     const next = await runAgentExchange({
       history,
       key: key.trim(),
@@ -100,7 +106,7 @@ export const AgentPanel = () => {
         size="icon-sm"
         variant="ghost"
         aria-label="Ask the agent"
-        className={styles.root({ className: "size-7 items-center justify-center" })}
+        className={styles.launcher()}
         onClick={() => {
           setOpen(true);
         }}
@@ -111,11 +117,11 @@ export const AgentPanel = () => {
   }
 
   return (
-    <section className={styles.root()}>
+    <section className={styles.panel()}>
       <header className={styles.header()}>
         <span className={styles.title()}>Ask the agent</span>
         <Button
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
           aria-label="Hide the agent"
           onClick={() => {
@@ -125,13 +131,13 @@ export const AgentPanel = () => {
           <X />
         </Button>
       </header>
-      <div className={styles.setup()}>
-        <input
+      <div className={styles.section()}>
+        <Input
           className={styles.field()}
           type="password"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Your Anthropic API key, kept in this browser"
+          placeholder="Your Anthropic or OpenAI API key, kept in this browser"
           value={key}
           onChange={(event) => {
             setKey(event.target.value);
@@ -140,19 +146,20 @@ export const AgentPanel = () => {
         />
       </div>
       {turns.length === 0 ? (
-        <p className={styles.hint()}>
-          This page registers its own tools, so an agent can drive the scene. Try: cover the
-          collapse with a crane shot.
+        <p className={styles.empty()}>
+          Try: create a new 20-second cinematic confrontation with two actors, escalating action,
+          six deliberate shots, a coherent human-scale environment, and authored lighting. Search
+          the motion library before choreographing it, then capture the result.
         </p>
       ) : (
-        <div className={styles.transcript()}>
+        <div className={styles.scroller()} ref={scroller}>
           {turns.map((turn) => (
             <AgentTurnView key={turn.id} turn={turn} />
           ))}
         </div>
       )}
       <div className={styles.composer()}>
-        <input
+        <Input
           className={styles.field()}
           placeholder={busy ? "Working…" : "Ask for a change to the scene"}
           value={prompt}

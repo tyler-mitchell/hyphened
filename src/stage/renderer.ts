@@ -1,4 +1,5 @@
 import tgpu, { d, std } from "typegpu";
+import { texture2dArray } from "typegpu/data";
 import {
   Body,
   BODY_FLAG_ALIVE,
@@ -8,6 +9,9 @@ import {
   defineGraphCapability,
   defineRenderStage,
   defineShaderFamily,
+  geometryVertexIndex,
+  GeometryVertexRow,
+  IndexedGeometryRecordRow,
   interpolateBodyPose,
   res,
   rotateByQuat,
@@ -19,6 +23,7 @@ import { MotionPoseSample, u32DivMod, type MotionPresentation } from "webgpu-eng
 import { PHYSICS_ID, type MotionBodies } from "./bodies";
 import type { MotionCamera } from "./camera";
 import { motionViewBindings, type MotionRenderProgram } from "../schema";
+import type { EnvironmentRenderProgram } from "./environment";
 import type { SkinPalette } from "./skin";
 import type { createMotionSurface } from "./surface";
 
@@ -27,12 +32,18 @@ export const MOTION_CAPTURE_RESOURCE_KEY = capabilityResourceKey({
   capabilityId: MOTION_RENDERER_ID,
   localName: "capture",
 });
+export const MOTION_BASE_COLOR_RESOURCE_KEY = capabilityResourceKey({
+  capabilityId: MOTION_RENDERER_ID,
+  localName: "baseColor",
+});
 
 const SkinnedVertex = d.struct({
   joints0: d.vec4u,
   joints1: d.vec4u,
   normal: d.vec4f,
   position: d.vec4f,
+  // Texture coordinates in xy, the base-colour array layer this vertex samples in z.
+  uv: d.vec4f,
   weights0: d.vec4f,
   weights1: d.vec4f,
 });
@@ -41,7 +52,52 @@ const SceneColor = {
   capture: d.location(0, d.vec4f),
   presentation: d.location(1, d.vec4f),
 } as const;
+const EnvironmentInstanceRow = d.struct({
+  worldFromLocal: d.mat4x4f,
+  normalFromLocal: d.mat4x4f,
+  color: d.vec4f,
+  geometry: d.u32,
+  pad0: d.u32,
+  pad1: d.u32,
+  pad2: d.u32,
+});
+const environmentBindings = tgpu.bindGroupLayout({
+  indices: { storage: d.arrayOf(d.u32), access: "readonly" },
+  instances: { storage: d.arrayOf(EnvironmentInstanceRow), access: "readonly" },
+  records: { storage: d.arrayOf(IndexedGeometryRecordRow), access: "readonly" },
+  vertices: { storage: d.arrayOf(GeometryVertexRow), access: "readonly" },
+});
+const environmentVertex = tgpu.vertexFn({
+  in: { instanceIndex: d.builtin.instanceIndex, vertexIndex: d.builtin.vertexIndex },
+  out: {
+    color: d.interpolate("flat", d.vec4f),
+    normal: d.vec3f,
+    position: d.builtin.position,
+  },
+})(({ instanceIndex, vertexIndex }) => {
+  "use gpu";
+  const instance = environmentBindings.$.instances[instanceIndex];
+  const record = environmentBindings.$.records[instance.geometry];
+  if (vertexIndex >= record.indexCount) {
+    return { color: instance.color, normal: d.vec3f(0, 1, 0), position: d.vec4f(0, 0, 2, 1) };
+  }
+  const local = environmentBindings.$.indices[
+    geometryVertexIndex(record.indexOffset, vertexIndex)
+  ];
+  const vertex = environmentBindings.$.vertices[
+    geometryVertexIndex(record.vertexOffset, local)
+  ];
+  const world = std.mul(instance.worldFromLocal, vertex.position);
+  return {
+    color: instance.color,
+    normal: std.normalize(std.mul(instance.normalFromLocal, vertex.normal).xyz),
+    position: std.mul(motionViewBindings.$.view[d.u32(0)].viewProjection, world),
+  };
+});
+const CharacterTexture = texture2dArray(d.f32);
 const skinBindings = tgpu.bindGroupLayout({
+  baseColor: { texture: CharacterTexture },
+  baseColorSampler: { sampler: "filtering" },
   indices: { storage: d.arrayOf(d.u32), access: "readonly" },
   paletteColumns: { storage: d.arrayOf(d.vec4f), access: "readonly" },
   samples: { storage: d.arrayOf(MotionPoseSample), access: "readonly" },
@@ -121,18 +177,24 @@ const vertex = tgpu.vertexFn({
   in: { instanceIndex: d.builtin.instanceIndex, vertexIndex: d.builtin.vertexIndex },
   out: {
     actor: d.interpolate("flat", d.u32),
+    material: d.interpolate("flat", d.u32),
     normal: d.vec3f,
     position: d.builtin.position,
+    uv: d.vec2f,
   },
 })(({ instanceIndex, vertexIndex }) => {
   "use gpu";
   const source = skinBindings.$.indices[vertexIndex];
-  const position = std.mul(
-    motionViewBindings.$.view[d.u32(0)].viewProjection,
-    skinVector(instanceIndex, source, d.vec4f(skinBindings.$.vertices[source].position.xyz, 1)),
+  const skinned = skinVector(
+    instanceIndex,
+    source,
+    d.vec4f(skinBindings.$.vertices[source].position.xyz, 1),
   );
+  const position = std.mul(motionViewBindings.$.view[d.u32(0)].viewProjection, skinned);
   return {
     actor: instanceIndex,
+    material: d.u32(skinBindings.$.vertices[source].uv.z),
+    uv: skinBindings.$.vertices[source].uv.xy,
     normal: std.normalize(
       skinVector(instanceIndex, source, d.vec4f(skinBindings.$.vertices[source].normal.xyz, 0)).xyz,
     ),
@@ -210,19 +272,66 @@ const crateVertex = tgpu.vertexFn({
 
 /** Render the GPU-resident Actor palette with one immutable mesh and one instanced draw. */
 export const createMotionRenderer = (input: {
+  /** The base-colour array size as width, height, layers; one white texel when the character brought none. */
+  readonly baseColorSize: readonly [number, number, number];
   readonly bodies: MotionBodies;
   readonly phase: string;
   readonly camera: MotionCamera;
+  readonly environment: EnvironmentRenderProgram;
   readonly presentation: MotionPresentation;
   readonly program: MotionRenderProgram;
   readonly skin: SkinPalette;
   readonly surface: ReturnType<typeof createMotionSurface>;
 }): SystemGraphCapability => {
-  const actorFragment = tgpu.fragmentFn({
-    in: { actor: d.interpolate("flat", d.u32), normal: d.vec3f },
+  const environmentFragment = tgpu.fragmentFn({
+    in: { color: d.interpolate("flat", d.vec4f), normal: d.vec3f },
     out: SceneColor,
-  })(({ actor, normal }) => {
+  })(({ color, normal }) => {
     "use gpu";
+    const light = std.max(
+      std.dot(
+        std.normalize(normal),
+        std.normalize(motionViewBindings.$.view[d.u32(0)].lightDirection.xyz),
+      ),
+      d.f32(0),
+    );
+    const intensity =
+      d.f32(input.program.ambientIntensity) + light * d.f32(input.program.directionalIntensity);
+    const output = d.vec4f(color.x * intensity, color.y * intensity, color.z * intensity, color.w);
+    return { capture: output, presentation: output };
+  });
+  const environmentFamily = defineShaderFamily({
+    id: "environment-entities",
+    variants: {
+      color: {
+        pipeline: {
+          depthStencil: { depthCompare: "less" as const, depthWriteEnabled: true },
+          fragment: environmentFragment,
+          primitive: { cullMode: "back" as const },
+          vertex: environmentVertex,
+        },
+      },
+    },
+  });
+  // A character brought no image when its array is one white texel; then the actor's own colour
+  // stands in for a base colour it does not have.
+  const baseColorWeight = Number(input.baseColorSize[0] > 1 || input.baseColorSize[1] > 1);
+  const actorFragment = tgpu.fragmentFn({
+    in: {
+      actor: d.interpolate("flat", d.u32),
+      material: d.interpolate("flat", d.u32),
+      normal: d.vec3f,
+      uv: d.vec2f,
+    },
+    out: SceneColor,
+  })(({ actor, material, normal, uv }) => {
+    "use gpu";
+    const surface = std.textureSample(
+      skinBindings.$.baseColor,
+      skinBindings.$.baseColorSampler,
+      uv,
+      material,
+    );
     const light = std.max(
       std.dot(
         std.normalize(normal),
@@ -247,7 +356,16 @@ export const createMotionRenderer = (input: {
     );
     const intensity =
       d.f32(input.program.ambientIntensity) + light * d.f32(input.program.directionalIntensity);
-    const output = d.vec4f(color.x * intensity, color.y * intensity, color.z * intensity, color.w);
+    const albedo = std.add(
+      std.mul(color, d.f32(1 - baseColorWeight)),
+      std.mul(surface, d.f32(baseColorWeight)),
+    );
+    const output = d.vec4f(
+      albedo.x * intensity,
+      albedo.y * intensity,
+      albedo.z * intensity,
+      albedo.w,
+    );
     return { capture: output, presentation: output };
   });
   const actorFamily = defineShaderFamily({
@@ -306,7 +424,7 @@ export const createMotionRenderer = (input: {
   });
   // Loose bodies read as warm crates; fixed obstacles as cool steel.
   const crateFragment = tgpu.fragmentFn({
-    in: { normal: d.vec3f, fixed: d.interpolate("flat", d.f32) },
+    in: { fixed: d.interpolate("flat", d.f32), normal: d.vec3f },
     out: SceneColor,
   })(({ normal, fixed }) => {
     "use gpu";
@@ -355,6 +473,44 @@ export const createMotionRenderer = (input: {
         schema: d.texture2d(d.f32),
         size: "presentation",
       }),
+      ...(input.environment.instances.length === 0
+        ? {}
+        : {
+            environmentIndices: res.storageBuffer({
+              capacity: input.environment.indices.length,
+              initial: input.environment.indices,
+              lifetime: "persistent",
+              schema: d.u32,
+            }),
+            environmentInstances: res.storageBuffer({
+              capacity: input.environment.instances.length,
+              initial: input.environment.instances.map((instance) =>
+                EnvironmentInstanceRow({
+                  color: d.vec4f(...instance.color),
+                  geometry: instance.geometry,
+                  normalFromLocal: instance.normalFromLocal,
+                  pad0: 0,
+                  pad1: 0,
+                  pad2: 0,
+                  worldFromLocal: instance.worldFromLocal,
+                }),
+              ),
+              lifetime: "persistent",
+              schema: EnvironmentInstanceRow,
+            }),
+            environmentRecords: res.storageBuffer({
+              capacity: input.environment.records.length,
+              initial: input.environment.records.map((record) => IndexedGeometryRecordRow(record)),
+              lifetime: "persistent",
+              schema: IndexedGeometryRecordRow,
+            }),
+            environmentVertices: res.storageBuffer({
+              capacity: input.environment.vertices.length,
+              initial: input.environment.vertices,
+              lifetime: "persistent",
+              schema: GeometryVertexRow,
+            }),
+          }),
       indices: res.storageBuffer({
         capacity: input.program.indices.length,
         initial: input.program.indices,
@@ -365,6 +521,20 @@ export const createMotionRenderer = (input: {
         initial: Skin({ jointCount: input.program.jointCount }),
         schema: Skin,
       }),
+      baseColor: res.asyncTexture({
+        format: "rgba8unorm",
+        schema: CharacterTexture,
+        size: [input.baseColorSize[0], input.baseColorSize[1], input.baseColorSize[2]],
+      }),
+      baseColorSampler: res.sampler({
+        binding: "filtering",
+        descriptor: {
+          addressModeU: "repeat",
+          addressModeV: "repeat",
+          magFilter: "linear",
+          minFilter: "linear",
+        },
+      }),
       vertices: res.storageBuffer({
         capacity: input.program.vertices.length,
         initial: input.program.vertices.map((source) =>
@@ -373,6 +543,7 @@ export const createMotionRenderer = (input: {
             joints1: d.vec4u(...source.joints1),
             normal: d.vec4f(...source.normal, 0),
             position: d.vec4f(...source.position, 1),
+            uv: d.vec4f(source.uv[0], source.uv[1], source.material, 0),
             weights0: d.vec4f(...source.weights0),
             weights1: d.vec4f(...source.weights1),
           }),
@@ -417,11 +588,39 @@ export const createMotionRenderer = (input: {
                 },
               ]
             : []),
+          ...(input.environment.instances.length === 0
+            ? []
+            : [
+                {
+                  bindGroups: [
+                    { bindings: { view: "view" }, layout: motionViewBindings },
+                    {
+                      bindings: {
+                        indices: "environmentIndices",
+                        instances: "environmentInstances",
+                        records: "environmentRecords",
+                        vertices: "environmentVertices",
+                      },
+                      layout: environmentBindings,
+                    },
+                  ],
+                  draws: [
+                    {
+                      instances: input.environment.instances.length,
+                      vertices: input.environment.maxIndexCount,
+                    },
+                  ],
+                  family: environmentFamily,
+                  id: "environment",
+                },
+              ]),
           {
             bindGroups: [
               { bindings: { view: "view" }, layout: motionViewBindings },
               {
                 bindings: {
+                  baseColor: "baseColor",
+                  baseColorSampler: "baseColorSampler",
                   indices: "indices",
                   paletteColumns: "paletteColumns",
                   samples: "samples",

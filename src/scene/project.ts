@@ -18,8 +18,14 @@ import {
   motionTextEmbeddingSource,
   type TextEmbedding,
 } from "webgpu-engine/motion";
-import { AuthoredStory } from "../schema";
-import { SCENE_COMPOSITION } from "./composition";
+import {
+  AuthoredStory,
+  EnvironmentEntity,
+  MotionRenderConfiguration,
+  type EnvironmentEntity as EnvironmentEntityData,
+  type MotionRenderConfiguration as MotionRenderConfigurationData,
+} from "../schema";
+import { SCENE_COMPOSITION, SceneComposition } from "./composition";
 import { AUTHORED_STORIES, authoredStoryIdentity, DEFAULT_STORY } from "./default";
 import { sceneAuthorship } from "./history";
 import { promptLibrary } from "./prompts";
@@ -27,10 +33,14 @@ import { motionTimelineDeclaration } from "./timeline";
 
 /** The scene document: its identity plus the authored compositions saved from the last commit. */
 const SceneProjectDefinition = type({
+  /** The character file this scene's actors wear; the released humanoid when absent. */
+  "character?": "string >= 1 | null",
   "compositions?": "Record<string, object>",
+  "environment?": EnvironmentEntity.array(),
   format: "'ardy/scene'",
   id: "string >= 1",
   schemaVersion: "1",
+  "render?": MotionRenderConfiguration,
   /** The built-in story id this scene was seeded from; a built-in that changed opens a fresh scene. */
   "seed?": "string >= 1",
   /** The story this scene was seeded from, built-in or authored by an agent. */
@@ -75,6 +85,8 @@ export interface SceneProject {
 
 /** A story to open a scene on: a built-in by id, or one an agent authored. */
 export interface SceneStoryChoice {
+  readonly environment?: readonly EnvironmentEntityData[];
+  readonly render?: MotionRenderConfigurationData;
   readonly seed?: string;
   readonly story: AuthoredStory;
 }
@@ -89,6 +101,8 @@ const createScene = async (
     format: "ardy/scene",
     id: crypto.randomUUID(),
     schemaVersion: 1,
+    ...(choice.environment === undefined ? {} : { environment: [...choice.environment] }),
+    ...(choice.render === undefined ? {} : { render: choice.render }),
     ...(choice.seed === undefined ? {} : { seed: choice.seed }),
     story: choice.story,
     title: choice.story.title,
@@ -114,6 +128,8 @@ const createScene = async (
  * record.
  */
 const openSceneCatalog = async () => {
+  // Saved compositions name prompt rows, so the library must exist before any record is restored.
+  await promptLibrary.loadManifest();
   const database = await openBrowserProjectDatabase({
     additionalTables: [EMBEDDING_TABLE],
     database: DATABASE,
@@ -178,7 +194,10 @@ const openSceneCatalog = async () => {
       run: record.run,
       storage: { kind: "memory" },
     });
-    const saved = record.definition.compositions?.[SCENE_COMPOSITION];
+    const stored = record.definition.compositions?.[SCENE_COMPOSITION];
+    const admitted = stored === undefined ? undefined : SceneComposition(stored);
+    const unplayable = admitted !== undefined && admitted instanceof type.errors;
+    const saved = unplayable ? undefined : stored;
     if (saved !== undefined) {
       // The document is the floor of this session's history, not an edit an undo can take back.
       const restore = {
@@ -214,7 +233,7 @@ const openSceneCatalog = async () => {
         await saving.close();
         await timeline.close();
       },
-      ...(reset === undefined ? {} : { reset }),
+      ...(reset === undefined ? (unplayable ? { reset: UNPLAYABLE_SCENE } : {}) : { reset }),
       saveEmbedding,
       timeline,
     };
@@ -243,6 +262,8 @@ const DISCARDED_SCENE =
   "The saved scene did not match the current scene format, so it was discarded and a new scene opened on the default story.";
 const CHANGED_STORY =
   "The built-in story this scene was seeded from has changed, so a new scene opened on its current form.";
+const UNPLAYABLE_SCENE =
+  "The saved scene could not be played, so this scene opened on its story again.";
 
 /**
  * The one scene project of this document. The active record reopens unless it was seeded from a
@@ -276,6 +297,68 @@ export const sceneProject = (): Promise<SceneProject> => {
   return owner.opening;
 };
 
+/** Preserve live authored compositions, or the durable snapshot when a failed run already closed. */
+const currentCompositions = async (project: SceneProject): Promise<Record<string, object>> =>
+  project.timeline.composition.readAll().then(
+    ({ compositions }) => compositions,
+    (cause: unknown) => {
+      if (cause instanceof Error && cause.message === "Time runtime is closed.") {
+        return project.record.definition.compositions ?? {};
+      }
+      throw cause;
+    },
+  );
+
+/**
+ * Dress this scene's actors in one character file, or in the released humanoid when none is named.
+ * The character is read when a scene opens, so the scene reopens on its own run wearing it.
+ */
+export const wearCharacter = async (character?: string): Promise<SceneProject> => {
+  const { catalog, openRecord } = await sceneCatalog();
+  const current = await sceneProject();
+  const compositions = await currentCompositions(current);
+  const saved = await catalog.saveDefinition({
+    definition: {
+      ...current.record.definition,
+      character: character ?? null,
+      compositions,
+    },
+  });
+  if (saved === undefined) throw new Error("The scene refused this character.");
+  // The previous run is released by the session that held it, once that session has closed.
+  return activateSceneProject(await openRecord(saved));
+};
+
+/** Replace this scene's static environment entities and reopen its render program. */
+export const setSceneEnvironment = async (
+  environment: readonly EnvironmentEntityData[],
+): Promise<SceneProject> => {
+  const current = await sceneProject();
+  const compositions = await currentCompositions(current);
+  const saved = await current.catalog.saveDefinition({
+    definition: {
+      ...current.record.definition,
+      compositions,
+      environment: [...environment],
+    },
+  });
+  if (saved === undefined) throw new Error("The scene refused these environment entities.");
+  return activateSceneProject(await (await sceneCatalog()).openRecord(saved));
+};
+
+/** Replace the scene's authored stage look and reopen its render program. */
+export const setSceneLook = async (
+  render: MotionRenderConfigurationData,
+): Promise<SceneProject> => {
+  const current = await sceneProject();
+  const compositions = await currentCompositions(current);
+  const saved = await current.catalog.saveDefinition({
+    definition: { ...current.record.definition, compositions, render },
+  });
+  if (saved === undefined) throw new Error("The scene refused this stage look.");
+  return activateSceneProject(await (await sceneCatalog()).openRecord(saved));
+};
+
 /** Observe the scene project of this document; a new scene replaces it in place. */
 export const observeSceneProject = (observer: (project: SceneProject) => void): (() => void) => {
   owner.observers.add(observer);
@@ -290,11 +373,14 @@ const activateSceneProject = (project: SceneProject): SceneProject => {
 
 /** Open one existing scene document from the durable catalog. */
 export const openSceneProject = async (project: string): Promise<SceneProject> => {
+  const current = await sceneProject();
+  if (current.record.definition.id === project) return current;
   const { catalog, openRecord } = await sceneCatalog();
   const record = await catalog.open({ project });
   if (record === undefined) throw new Error(`The scene project "${project}" does not exist.`);
+  const next = await openRecord(record);
   await catalog.setActive({ project });
-  return activateSceneProject(await openRecord(record));
+  return activateSceneProject(next);
 };
 
 /**

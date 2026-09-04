@@ -3,6 +3,7 @@ import type {
   AuthoredPromptSpan,
   AuthoredRootConstraint,
   AuthoredStory,
+  AuthoredWall,
   BodyItemData,
 } from "../schema";
 import {
@@ -13,6 +14,7 @@ import {
 import { DEFAULT_PACE_METRES_PER_SECOND, promptLibrary } from "./prompts";
 
 export const SCENE_SPAN_FRAMES = 680;
+export const EMPTY_SCENE_FRAMES = 320;
 
 // Route vertices every second. Each vertex inside a window's generation horizon is a timed planar
 // root claim; the first vertex beyond it is the future token the model plans toward. One second
@@ -27,6 +29,12 @@ export const WAYPOINT_INTERVAL_FRAMES = MOTION_FRAMES_PER_SECOND;
  * register and every span begins on a window boundary.
  */
 export const AUTHORED_STORIES: Readonly<Record<string, AuthoredStory>> = {
+  empty: {
+    actors: [],
+    coverage: [],
+    frameCount: EMPTY_SCENE_FRAMES,
+    title: "Untitled Scene",
+  },
   "the-victor": {
     actors: [
       {
@@ -73,6 +81,33 @@ export const AUTHORED_STORIES: Readonly<Record<string, AuthoredStory>> = {
     ],
     frameCount: 680,
     title: "The Victor",
+  },
+  // The route covers thirty metres in 320 frames, so the actor reaches the wall at twelve metres
+  // around frame 128, inside the tracking shot. Its collider is kinematic and therefore unstoppable:
+  // it does not slow at the wall, it goes through and the bricks scatter.
+  "the-wall": {
+    actors: [
+      {
+        origin: [0, 0, 0],
+        path: [
+          [0, 0],
+          [0, -30],
+        ],
+        scenario: [
+          { frames: 80, prompt: "A person is walking." },
+          { frames: 240, prompt: "A person is sprinting." },
+        ],
+      },
+    ],
+    coverage: [
+      { end: 80, preset: "establishing", row: 0, start: 0 },
+      { end: 160, preset: "tracking", row: 0, start: 80 },
+      { end: 240, preset: "low-angle", row: 0, start: 160 },
+      { end: 320, preset: "follow", row: 0, start: 240 },
+    ],
+    frameCount: 320,
+    title: "The Wall",
+    walls: [{ bricksPerCourse: 8, courses: 6, offset: [0, 0, -12], row: 0, tick: 0 }],
   },
   "the-reunion": {
     actors: [
@@ -168,7 +203,7 @@ export const AUTHORED_STORIES: Readonly<Record<string, AuthoredStory>> = {
   },
 };
 
-export const DEFAULT_STORY = "the-victor";
+export const DEFAULT_STORY = "empty";
 
 /** The built-in stories an agent or the page can start: id and title. */
 export const storyChoices = (): ReadonlyArray<{ readonly id: string; readonly title: string }> =>
@@ -296,11 +331,59 @@ export const authoredRootConstraints = (
     spans: authoredPromptSpans(story, row),
   });
 
-/** A story places no bodies; an agent places props with the body tools. */
-export const authoredBodies = (): ReadonlyArray<{
-  readonly data: BodyItemData;
-  readonly tick: number;
-}> => [];
+// The physics playground's proven construction: a brick is half a metre long and a quarter high,
+// and odd courses are closed with half bricks so no vertical joint runs the wall's height and no
+// end brick stands half-unsupported. Without the closers the wall topples on its own.
+const BRICK = [0.25, 0.125, 0.125] as const;
+const HALF_BRICK = [0.125, 0.125, 0.125] as const;
+const BRICK_MASS = 1;
+
+const layWall = (input: {
+  readonly at: number;
+  readonly subject: string;
+  readonly wall: AuthoredWall;
+}): ReadonlyArray<{ readonly data: BodyItemData; readonly tick: number }> => {
+  const { at, subject, wall } = input;
+  const left = -wall.bricksPerCourse * BRICK[0];
+  const right = wall.bricksPerCourse * BRICK[0];
+  return Array.from({ length: wall.courses }, (_unusedCourse, course) => {
+    const elevation = BRICK[1] + course * 2 * BRICK[1];
+    const laid =
+      course % 2 === 0
+        ? Array.from({ length: wall.bricksPerCourse }, (_unusedBrick, column) => ({
+            halfExtents: BRICK,
+            x: left + BRICK[0] + column * 2 * BRICK[0],
+          }))
+        : [
+            { halfExtents: HALF_BRICK, x: left + HALF_BRICK[0] },
+            ...Array.from({ length: wall.bricksPerCourse - 1 }, (_unusedBrick, column) => ({
+              halfExtents: BRICK,
+              x: left + 2 * HALF_BRICK[0] + BRICK[0] + column * 2 * BRICK[0],
+            })),
+            { halfExtents: HALF_BRICK, x: right - HALF_BRICK[0] },
+          ];
+    return laid.map(({ halfExtents, x }, column) => ({
+      data: {
+        halfExtents,
+        label: `wall${String(at)}-course${String(course)}-brick${String(column)}`,
+        mass: BRICK_MASS,
+        offset: [wall.offset[0] + x, wall.offset[1] + elevation, wall.offset[2]] as const,
+        subject,
+      },
+      tick: wall.tick,
+    }));
+  }).flat();
+};
+
+/** The story's walls, laid brick by brick; an agent places any other prop with the body tools. */
+export const authoredBodies = (
+  story: AuthoredStory,
+  subjects: ReadonlyArray<{ readonly id: string; readonly row: number }>,
+): ReadonlyArray<{ readonly data: BodyItemData; readonly tick: number }> =>
+  (story.walls ?? []).flatMap((wall, at) => {
+    const subject = subjects.find(({ row }) => row === wall.row);
+    return subject === undefined ? [] : layWall({ at, subject: subject.id, wall });
+  });
 
 export const authoredActor = (
   story: AuthoredStory,

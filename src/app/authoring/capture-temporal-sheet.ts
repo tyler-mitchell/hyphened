@@ -34,6 +34,7 @@ export const captureMotionTemporalSheet = async (input: {
   readonly samples: number;
   readonly stride: number;
   readonly subject?: string;
+  readonly synchronizeCamera: (subject?: string) => Promise<void>;
   readonly timeline: TimelineRuntime<typeof motionTimelineDeclaration>;
   readonly window:
     | { readonly kind: "current" }
@@ -97,6 +98,7 @@ export const captureMotionTemporalSheet = async (input: {
   const image = await (async () => {
     await input.timeline.transport.pause();
     try {
+      await input.synchronizeCamera(subject);
       await input.timeline.transport.seekTo({ clock: "motionFrame", tick: firstFrame });
       await awaitPresentedFrame();
       return await observeRuntime(input.engine).sheet({
@@ -108,7 +110,7 @@ export const captureMotionTemporalSheet = async (input: {
         smoothing: true,
         cellLabel: (index) => {
           const sample = observations[index]!;
-          return `frame ${String(sample.frame)} · state ${sample.motionState} · camera ${sample.cameraItem}`;
+          return `subject ${subject} · frame ${String(sample.frame)} · state ${sample.motionState} · authored camera ${sample.cameraItem}`;
         },
         columns: Math.min(input.samples, input.layout?.columns ?? DEFAULT_TEMPORAL_SHEET_COLUMNS),
         flush: () => input.engine.flush(),
@@ -119,6 +121,7 @@ export const captureMotionTemporalSheet = async (input: {
         ...input.layout,
       });
     } finally {
+      await input.synchronizeCamera();
       await input.timeline.transport.seekTo(transport.position);
       await awaitPresentedFrame();
       await input.engine.flush();
@@ -140,7 +143,7 @@ export const captureMotionTemporalSheet = async (input: {
       subject,
       view: {
         cameraItems: Array.from(new Set(observations.map(({ cameraItem }) => cameraItem))),
-        kind: "authored-camera" as const,
+        kind: "subject-targeted-camera" as const,
       },
     },
   };
