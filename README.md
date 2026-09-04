@@ -68,7 +68,7 @@ Agent commits carry an author in their transaction identity, `agent/<tool>/<uuid
 
 ## Try it
 
-Open the live URL in any desktop browser with WebGPU and `shader-f16`, which desktop Chrome has. The page tells you if something is missing, and the agent panel opens either way, so you can ask it what your browser lacks.
+Open the live URL in Google Chrome 149 or later on a desktop computer. The scene needs four things from the browser: WebGPU, a graphics adapter, the `shader-f16` feature, and the `immediate_address_space` WGSL language feature that the physics shaders are built from. The last one is what Chrome 149 adds; a browser can have the other three and still not run the scene. The page names whichever one is missing, and the agent panel opens either way, so you can ask it what your browser lacks.
 
 There are two ways to reach the tools, and you do not have to configure anything for the first.
 
