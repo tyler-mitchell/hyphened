@@ -122,17 +122,19 @@ export const BrowserCapabilityNotice = ({
   readonly open?: boolean;
 }) => {
   const styles = introStyles();
+  const [read, setRead] = useState(false);
   const checks = capabilityChecks(capabilities);
 
   if (checks.some(({ available }) => !available)) {
     return (
-      <Dialog open={true}>
-        <DialogContent className={styles.dialog()} showCloseButton={false}>
+      <Dialog open={!read} onOpenChange={(next: boolean) => setRead(!next)}>
+        <DialogContent className={styles.dialog()}>
           <DialogHeader>
             <DialogTitle>This browser cannot run the scene</DialogTitle>
             <DialogDescription>
               The scene is drawn on your graphics processor and needs a browser feature this
-              computer is not offering yet.
+              computer is not offering yet. The agent below still answers, and reads this same
+              report.
             </DialogDescription>
           </DialogHeader>
           <ul className={styles.list()}>
@@ -140,6 +142,15 @@ export const BrowserCapabilityNotice = ({
               <CapabilityRow key={check.name} {...check} />
             ))}
           </ul>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setRead(true);
+              }}
+            >
+              Ask the agent instead
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     );
